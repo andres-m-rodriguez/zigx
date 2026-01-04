@@ -1,0 +1,66 @@
+const std = @import("std");
+const request = @import("../Request/request.zig");
+
+pub const HttpServer = struct {
+    port: u16,
+    address: std.net.Address,
+    listener: std.net.Server,
+
+    pub fn deinit(self: *HttpServer) void {
+        self.listener.deinit();
+    }
+
+    pub fn run(self: *HttpServer, allocator: std.mem.Allocator) !void {
+        std.debug.print("Listening on port {}\n", .{self.port});
+
+        while (true) {
+            const connection = try self.listener.accept();
+            handleConnection(allocator, connection);
+            // _ = std.Thread.spawn(.{}, handleConnection, .{ allocator, connection }) catch |err| {
+            //     std.debug.print("Failed to spawn thread: {}\n", .{err});
+            //     connection.stream.close();
+            // };
+        }
+    }
+};
+
+pub fn create(port: u16) !HttpServer {
+    const address = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, port);
+    const listener = try address.listen(.{});
+
+    return HttpServer{
+        .port = port,
+        .address = address,
+        .listener = listener,
+    };
+}
+
+fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Connection) void {
+    std.debug.print("Handle", .{});
+    defer connection.stream.close();
+
+    var read_buffer: [4096]u8 = undefined;
+    var stream_reader = connection.stream.reader(&read_buffer);
+
+    var req = request.requestFromReader(stream_reader.interface(), allocator) catch |err| {
+        std.debug.print("Request parse error: {}\n", .{err});
+        return;
+    };
+    defer req.deinit(allocator); // free everything
+
+    var write_buffer: [4096]u8 = undefined;
+    var stream_writer = connection.stream.writer(&write_buffer);
+
+    writeResponse(&stream_writer.interface) catch return;
+    // The great one and only flush!
+    // You shall not be forgotten...
+    stream_writer.interface.flush() catch return;
+    std.debug.print("We flushed", .{});
+}
+
+fn writeResponse(writer: *std.Io.Writer) !void {
+    //
+    const response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHello";
+    // Write using the interface
+    try writer.writeAll(response);
+}

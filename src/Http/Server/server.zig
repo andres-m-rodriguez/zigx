@@ -15,11 +15,10 @@ pub const HttpServer = struct {
 
         while (true) {
             const connection = try self.listener.accept();
-            handleConnection(allocator, connection);
-            // _ = std.Thread.spawn(.{}, handleConnection, .{ allocator, connection }) catch |err| {
-            //     std.debug.print("Failed to spawn thread: {}\n", .{err});
-            //     connection.stream.close();
-            // };
+            _ = std.Thread.spawn(.{}, handleConnection, .{ allocator, connection }) catch |err| {
+                std.debug.print("Failed to spawn thread: {}\n", .{err});
+                connection.stream.close();
+            };
         }
     }
 };
@@ -36,10 +35,10 @@ pub fn create(port: u16) !HttpServer {
 }
 
 fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Connection) void {
-    std.debug.print("Handle", .{});
+    std.debug.print("Request recieved.\n", .{});
     defer connection.stream.close();
 
-    var read_buffer: [4096]u8 = undefined;
+    var read_buffer: [1]u8 = undefined;
     var stream_reader = connection.stream.reader(&read_buffer);
 
     var req = request.requestFromReader(stream_reader.interface(), allocator) catch |err| {
@@ -55,7 +54,6 @@ fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Con
     // The great one and only flush!
     // You shall not be forgotten...
     stream_writer.interface.flush() catch return;
-    std.debug.print("We flushed", .{});
 }
 
 fn writeResponse(writer: *std.Io.Writer) !void {

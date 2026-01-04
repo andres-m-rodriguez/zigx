@@ -2,7 +2,7 @@ const std = @import("std");
 
 // Import test files so they're included in the test build
 test {
-    _ = @import("Http/Request/Tests/header_test.zig");
+    _ = @import("Http/Headers/Tests/header_test.zig");
     _ = @import("Http/Request/Tests/request_test.zig");
     _ = @import("Http/Request/Tests/requestLine_test.zig");
 }

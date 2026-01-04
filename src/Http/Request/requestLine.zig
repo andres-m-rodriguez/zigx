@@ -1,5 +1,23 @@
 const std = @import("std");
 
+pub const RequestLine = struct {
+    http_version: []const u8,
+    request_target: []const u8,
+    method: []const u8,
+
+    pub fn deinit(self: *RequestLine, allocator: std.mem.Allocator) void {
+        allocator.free(self.method);
+        allocator.free(self.request_target);
+        allocator.free(self.http_version);
+    }
+};
+
+pub const Error = std.mem.Allocator.Error || error{
+    MalformedRequestLine,
+    InvalidMethod,
+    InvalidVersion,
+    InvalidTarget,
+};
 const ParseResult = union(enum) {
     complete: struct {
         request_line: RequestLine,
@@ -26,24 +44,6 @@ const ParseResult = union(enum) {
     }
 };
 
-pub const RequestLine = struct {
-    http_version: []const u8,
-    request_target: []const u8,
-    method: []const u8,
-
-    pub fn deinit(self: *RequestLine, allocator: std.mem.Allocator) void {
-        allocator.free(self.method);
-        allocator.free(self.request_target);
-        allocator.free(self.http_version);
-    }
-};
-
-pub const Error = std.mem.Allocator.Error || error{
-    MalformedRequestLine,
-    InvalidMethod,
-    InvalidVersion,
-    InvalidTarget,
-};
 pub fn parse(allocator: std.mem.Allocator, data: []u8) Error!ParseResult {
     const rn_delimiter = "\r\n";
     const rn_index = std.mem.indexOf(u8, data, rn_delimiter) orelse return ParseResult.Incomplete(data.len);

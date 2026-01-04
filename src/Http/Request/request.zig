@@ -1,5 +1,5 @@
 const std = @import("std");
-pub const headers = @import("headers.zig");
+pub const headers = @import("../Headers/headers.zig");
 pub const requestLine = @import("requestLine.zig");
 
 const Request = struct {

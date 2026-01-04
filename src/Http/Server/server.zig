@@ -1,6 +1,6 @@
 const std = @import("std");
 const request = @import("../Request/request.zig");
-
+const response = @import("../Response/response.zig");
 pub const HttpServer = struct {
     port: u16,
     address: std.net.Address,
@@ -50,15 +50,15 @@ fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Con
     var write_buffer: [4096]u8 = undefined;
     var stream_writer = connection.stream.writer(&write_buffer);
 
-    writeResponse(&stream_writer.interface) catch return;
+    writeResponse(&stream_writer.interface, allocator) catch return;
     // The great one and only flush!
     // You shall not be forgotten...
     stream_writer.interface.flush() catch return;
 }
 
-fn writeResponse(writer: *std.Io.Writer) !void {
-    //
-    const response = "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nHello";
-    // Write using the interface
-    try writer.writeAll(response);
+fn writeResponse(writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+    try response.writeStatusLine(writer, response.StatusCode.StatusOk);
+    var default_headers = try response.getDefaultHeaders(allocator, 0);
+    defer default_headers.deinit(allocator);
+    try response.writeHeaders(writer, default_headers);
 }

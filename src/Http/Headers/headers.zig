@@ -42,6 +42,17 @@ pub const Headers = struct {
         return std.fmt.parseInt(i64, value, 10) catch return error.InvalidInteger;
     }
 
+    pub fn replace(self: *Headers, key: []const u8, value: []const u8, allocator: std.mem.Allocator) !void {
+        const gop = try self.map.getOrPut(allocator, key);
+
+        if (gop.found_existing) {
+            allocator.free(gop.value_ptr.*);
+        } else {
+            gop.key_ptr.* = try allocator.dupe(u8, key);
+        }
+
+        gop.value_ptr.* = try allocator.dupe(u8, value);
+    }
     pub fn set(self: *Headers, key: []const u8, value: []const u8, allocator: std.mem.Allocator) !void {
         const key_copy = try allocator.dupe(u8, key);
         const gop = try self.map.getOrPut(allocator, key_copy);

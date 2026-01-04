@@ -54,19 +54,20 @@ pub fn requestFromReader(reader: *std.Io.Reader, allocator: std.mem.Allocator) E
     var current_line = std.ArrayList(u8){};
 
     defer current_line.deinit(allocator);
-    var buffer: [4096]u8 = undefined;
     var consumed: usize = 0;
 
     while (true) {
-        const amount_read = try reader.readSliceShort(&buffer);
-        if (amount_read == 0) {
-            if (current_line.items.len == 0) {
-                return Error.RequestEmpty;
-            }
-            return Error.RequestIncomplete;
-        }
+        //We check how much we can read going foward...ensuring at least 1 byte comes in, if not then we close
+        const data = reader.peekGreedy(1) catch |err| switch (err) {
+            error.EndOfStream => {
+                if (current_line.items.len == 0) return Error.RequestEmpty;
+                return Error.RequestIncomplete;
+            },
+            error.ReadFailed => return Error.ReadFailed,
+        };
 
-        try current_line.appendSlice(allocator, buffer[0..amount_read]);
+        reader.toss(data.len); // Consume it
+        try current_line.appendSlice(allocator, data);
         while (true) {
             switch (request_state.state) {
                 .Init => {

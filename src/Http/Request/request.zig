@@ -2,7 +2,7 @@ const std = @import("std");
 pub const headers = @import("../Headers/headers.zig");
 pub const requestLine = @import("requestLine.zig");
 
-const Request = struct {
+pub const Request = struct {
     request_line: ?requestLine.RequestLine = null,
     request_headers: headers.Headers = undefined,
     request_body: std.ArrayList(u8) = undefined,

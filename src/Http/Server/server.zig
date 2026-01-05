@@ -75,7 +75,7 @@ pub fn create(port: u16, errorHandler: *const fn (
 
 fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Connection, httpServer: *HttpServer) void {
     defer connection.stream.close();
-    var default_headers = Response.getDefaultHeaders(allocator, 0) catch return;
+    var default_headers = Response.getDefaultResponseHeaders(allocator, 0) catch return;
     defer default_headers.deinit(allocator);
 
     var read_buffer: [1]u8 = undefined;

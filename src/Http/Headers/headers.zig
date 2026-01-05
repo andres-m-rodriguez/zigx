@@ -53,6 +53,13 @@ pub const Headers = struct {
 
         gop.value_ptr.* = try allocator.dupe(u8, value);
     }
+    pub fn delete(self: *Headers, key: []const u8, allocator: std.mem.Allocator) bool {
+        const entry = self.map.fetchRemove(key) orelse return false;
+        allocator.free(entry.key);
+        allocator.free(entry.value);
+
+        return true;
+    }
     pub fn set(self: *Headers, key: []const u8, value: []const u8, allocator: std.mem.Allocator) !void {
         const key_copy = try allocator.dupe(u8, key);
         const gop = try self.map.getOrPut(allocator, key_copy);

@@ -29,11 +29,49 @@ fn handle(
         body_buffer.clearRetainingCapacity(); // clear existing content
         try body_buffer.appendSlice(allocator, response400());
         status_code = httpServer.Response.StatusCode.StatusBadRequest;
-    }
-    if (std.mem.eql(u8, request_line.request_target, "/myproblem")) {
+    } else if (std.mem.eql(u8, request_line.request_target, "/myproblem")) {
         body_buffer.clearRetainingCapacity();
         try body_buffer.appendSlice(allocator, response500());
         status_code = httpServer.Response.StatusCode.StatusInternalServerError;
+    } else if (std.mem.startsWith(u8, request_line.request_target, "/httpbin/stream/")) {
+        const number_str = request_line.request_target["/httpbin/stream/".len..];
+        const number = std.fmt.parseInt(u32, number_str, 10) catch unreachable;
+
+        var url_buf: [256]u8 = undefined;
+        const url = try std.fmt.bufPrint(&url_buf, "http://httpbin.org/stream/{d}", .{number});
+
+        var client = std.http.Client{ .allocator = allocator };
+        defer client.deinit();
+
+        const uri = try std.Uri.parse(url);
+        var req = try client.request(.GET, uri, .{});
+        defer req.deinit();
+        try req.sendBodiless();
+        var redirect_buf: [4096]u8 = undefined;
+        var response = try req.receiveHead(&redirect_buf);
+        const reader = response.reader(&.{});
+
+        if (!(response.head.status.class() == .success)) {
+            body_buffer.clearRetainingCapacity();
+            try body_buffer.appendSlice(allocator, response500());
+            status_code = httpServer.Response.StatusCode.StatusInternalServerError;
+        }
+
+        _ = default_headers.delete("Content-Length", allocator);
+        try default_headers.replace("Content-Type", "text/plain", allocator);
+        try default_headers.set("Transfer-Encoding", "chunked", allocator);
+        //
+        try writer.writeStatusLine(httpServer.Response.StatusCode.StatusOk);
+        try writer.writeHeaders(&default_headers);
+
+        var read_all = try writer.writeChunk(reader);
+
+        while (read_all) {
+            read_all = try writer.writeChunk(reader);
+        }
+
+        try writer.writeChunkEnd();
+        return httpServer.HandlerResult.Success();
     }
 
     const body_length = body_buffer.items.len;

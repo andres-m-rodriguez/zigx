@@ -1,6 +1,8 @@
 const std = @import("std");
+const builtin = @import("builtin");
 pub const Request = @import("../Request/request.zig");
 pub const Response = @import("../Response/response.zig");
+
 pub const HandlerResult = union(enum) {
     success: struct {},
     failed: struct {
@@ -26,7 +28,7 @@ pub const HttpServer = struct {
     port: u16,
     address: std.net.Address,
     listener: std.net.Server,
-    handler: *const fn (allocator: std.mem.Allocator, writer: *std.Io.Writer, req: *Request.Request) anyerror!HandlerResult,
+    handler: *const fn (allocator: std.mem.Allocator, writer: *Response.ResponseWriter, req: *Request.Request) anyerror!HandlerResult,
     pub fn deinit(self: *HttpServer) void {
         self.listener.deinit();
     }
@@ -34,17 +36,32 @@ pub const HttpServer = struct {
     pub fn run(self: *HttpServer, allocator: std.mem.Allocator) !void {
         std.debug.print("Listening on port {}\n", .{self.port});
 
+        var request_count: usize = 0;
+        const max_requests: ?usize = if (builtin.is_test or builtin.mode == .Debug) 5 else null;
+
         while (true) {
             const connection = try self.listener.accept();
             _ = std.Thread.spawn(.{}, handleConnection, .{ allocator, connection, self }) catch |err| {
                 std.debug.print("Failed to spawn thread: {}\n", .{err});
                 connection.stream.close();
             };
+
+            request_count += 1;
+            if (max_requests) |max| {
+                if (request_count >= max) {
+                    std.debug.print("Test mode: reached {} requests, shutting down\n", .{max});
+                    return;
+                }
+            }
         }
     }
 };
 
-pub fn create(port: u16, errorHandler: *const fn (allocator: std.mem.Allocator, writer: *std.Io.Writer, req: *Request.Request) anyerror!HandlerResult) !HttpServer {
+pub fn create(port: u16, errorHandler: *const fn (
+    allocator: std.mem.Allocator,
+    writer: *Response.ResponseWriter,
+    req: *Request.Request,
+) anyerror!HandlerResult) !HttpServer {
     const address = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, port);
     const listener = try address.listen(.{});
 
@@ -65,46 +82,29 @@ fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Con
     var stream_reader = connection.stream.reader(&read_buffer);
 
     var write_buffer: [4096]u8 = undefined;
-    var response_writer = connection.stream.writer(&write_buffer);
+    var con_writer = connection.stream.writer(&write_buffer);
+    var response_writer = Response.ResponseWriter{
+        .writer = &con_writer.interface,
+    };
 
     var req = Request.requestFromReader(stream_reader.interface(), allocator) catch {
-        Response.writeStatusLine(&response_writer.interface, Response.StatusCode.StatusInternalServerError) catch return;
-        Response.writeHeaders(&response_writer.interface, default_headers) catch return;
+        response_writer.writeStatusLine(Response.StatusCode.StatusInternalServerError) catch return;
+        response_writer.writeHeaders(&default_headers) catch return;
         return;
     };
     defer req.deinit(allocator); // free everything
 
-    var body_buffer: std.ArrayList(u8) = .empty;
-    defer body_buffer.deinit(allocator);
-    var aw: std.Io.Writer.Allocating = .fromArrayList(allocator, &body_buffer);
+    var body_writer = Response.ResponseWriter{
+        .writer = &con_writer.interface,
+    };
 
-    const results = httpServer.handler(allocator, &aw.writer, &req) catch {
-        Response.writeStatusLine(&response_writer.interface, Response.StatusCode.StatusInternalServerError) catch return;
-        Response.writeHeaders(&response_writer.interface, default_headers) catch return;
+    _ = httpServer.handler(allocator, &body_writer, &req) catch {
+        response_writer.writeStatusLine(Response.StatusCode.StatusInternalServerError) catch return;
+        response_writer.writeHeaders(&default_headers) catch return;
         return;
     };
-    if (results == .failed) {
-        var len_buf: [20]u8 = undefined;
-        const len_str = std.fmt.bufPrint(&len_buf, "{d}", .{results.failed.message.len}) catch unreachable;
-        default_headers.replace("Content-Length", len_str, allocator) catch return;
-
-        Response.writeStatusLine(&response_writer.interface, results.failed.status_code) catch return;
-        Response.writeHeaders(&response_writer.interface, default_headers) catch return;
-        response_writer.interface.writeAll(results.failed.message) catch return;
-        response_writer.interface.flush() catch return;
-        return;
-    }
-    body_buffer = aw.toArrayList();
-    const body_length = body_buffer.items.len;
-    var body_lenght_buf: [20]u8 = undefined;
-    const length_str = std.fmt.bufPrint(&body_lenght_buf, "{d}", .{body_length}) catch unreachable;
-    default_headers.replace("Content-Length", length_str, allocator) catch unreachable;
-
-    Response.writeStatusLine(&response_writer.interface, Response.StatusCode.StatusOk) catch unreachable;
-    Response.writeHeaders(&response_writer.interface, default_headers) catch unreachable;
-    response_writer.interface.writeAll(body_buffer.items) catch return;
 
     // The great one and only flush!
     // You shall not be forgotten...
-    response_writer.interface.flush() catch return;
+    response_writer.flush() catch return;
 }

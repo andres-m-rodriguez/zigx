@@ -5,6 +5,7 @@ test {
     _ = @import("Http/Headers/Tests/header_test.zig");
     _ = @import("Http/Request/Tests/request_test.zig");
     _ = @import("Http/Request/Tests/requestLine_test.zig");
+    _ = @import("Http/Server/Tests/server_test.zig");
 }
 
 pub const ChunkReader = struct {

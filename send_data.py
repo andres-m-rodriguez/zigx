@@ -68,4 +68,7 @@ if __name__ == "__main__":
         f"{body}"
     )
 
-    send_data_slowly(message, chunk_size=5, delay=0.1, close_early=False)
+    send_data_slowly(message, chunk_size=5, delay=2, close_early=False)
+
+
+

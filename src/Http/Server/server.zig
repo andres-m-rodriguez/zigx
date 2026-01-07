@@ -2,33 +2,17 @@ const std = @import("std");
 const builtin = @import("builtin");
 pub const Request = @import("../Request/request.zig");
 pub const Response = @import("../Response/response.zig");
+pub const ServerContext = @import("context.zig").ServerContext;
 
-pub const HandlerResult = union(enum) {
-    success: struct {},
-    failed: struct {
-        status_code: Response.StatusCode,
-        message: []const u8,
-    },
+pub const Handler = *const fn (ctx: *ServerContext) anyerror!void;
 
-    pub fn Failed(message: []const u8, statusCode: Response.StatusCode) HandlerResult {
-        return HandlerResult{
-            .failed = .{
-                .message = message,
-                .status_code = statusCode,
-            },
-        };
-    }
-    pub fn Success() HandlerResult {
-        return HandlerResult{
-            .success = .{},
-        };
-    }
-};
 pub const HttpServer = struct {
     port: u16,
     address: std.net.Address,
     listener: std.net.Server,
-    handler: *const fn (allocator: std.mem.Allocator, writer: *Response.ResponseWriter, req: *Request.Request) anyerror!HandlerResult,
+    handler: Handler,
+    app_instance: ?*anyopaque = null,
+
     pub fn deinit(self: *HttpServer) void {
         self.listener.deinit();
     }
@@ -57,11 +41,7 @@ pub const HttpServer = struct {
     }
 };
 
-pub fn create(port: u16, errorHandler: *const fn (
-    allocator: std.mem.Allocator,
-    writer: *Response.ResponseWriter,
-    req: *Request.Request,
-) anyerror!HandlerResult) !HttpServer {
+pub fn create(port: u16, handler: Handler, app_instance: ?*anyopaque) !HttpServer {
     const address = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, port);
     const listener = try address.listen(.{});
 
@@ -69,42 +49,56 @@ pub fn create(port: u16, errorHandler: *const fn (
         .port = port,
         .address = address,
         .listener = listener,
-        .handler = errorHandler,
+        .handler = handler,
+        .app_instance = app_instance,
     };
 }
 
 fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Connection, httpServer: *HttpServer) void {
     defer connection.stream.close();
-    var default_headers = Response.getDefaultResponseHeaders(allocator, 0) catch return;
-    defer default_headers.deinit(allocator);
+
+    // Areana allocator per request because we are smart like that
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const request_allocator = arena.allocator();
+
+    var default_headers = Response.getDefaultResponseHeaders(request_allocator, 0) catch return;
+
+    //Yes 1 byte at a time :D
 
     var read_buffer: [1]u8 = undefined;
     var stream_reader = connection.stream.reader(&read_buffer);
 
+    //Yes idk what this buffer fully does since its internal BUT...we ball
     var write_buffer: [4096]u8 = undefined;
     var con_writer = connection.stream.writer(&write_buffer);
     var response_writer = Response.ResponseWriter{
         .writer = &con_writer.interface,
     };
 
-    var req = Request.requestFromReader(stream_reader.interface(), allocator) catch {
+    var req = Request.requestFromReader(stream_reader.interface(), request_allocator) catch {
         response_writer.writeStatusLine(Response.StatusCode.StatusInternalServerError) catch return;
         response_writer.writeHeaders(&default_headers) catch return;
         return;
     };
-    defer req.deinit(allocator); // free everything
 
     var body_writer = Response.ResponseWriter{
         .writer = &con_writer.interface,
     };
 
-    _ = httpServer.handler(allocator, &body_writer, &req) catch {
+    var ctx = ServerContext{
+        .allocator = request_allocator,
+        .writer = &body_writer,
+        .req = &req,
+        .app_instance = httpServer.app_instance,
+    };
+
+    httpServer.handler(&ctx) catch |err| {
+        std.debug.print("{}", .{err});
         response_writer.writeStatusLine(Response.StatusCode.StatusInternalServerError) catch return;
         response_writer.writeHeaders(&default_headers) catch return;
         return;
     };
 
-    // The great one and only flush!
-    // You shall not be forgotten...
     response_writer.flush() catch return;
 }

@@ -7,6 +7,7 @@ pub const ResponseWriter = struct {
         const status_line = switch (statusCode) {
             .StatusOk => "HTTP/1.1 200 OK\r\n",
             .StatusBadRequest => "HTTP/1.1 400 Bad Request\r\n",
+            .StatusNotFound => "HTTP/1.1 404 Not Found\r\n",
             .StatusInternalServerError => "HTTP/1.1 500 Internal Server Error\r\n",
         };
         try self.writer.writeAll(status_line);
@@ -42,6 +43,7 @@ pub const ResponseWriter = struct {
 pub const StatusCode = enum(u16) {
     StatusOk = 200,
     StatusBadRequest = 400,
+    StatusNotFound = 404,
     StatusInternalServerError = 500,
 };
 pub fn getDefaultResponseHeaders(allocator: std.mem.Allocator, content_length: usize) !header.Headers {

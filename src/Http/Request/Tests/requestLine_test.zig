@@ -1,5 +1,6 @@
 const std = @import("std");
 const requestLine = @import("../requestLine.zig");
+const Method = @import("../method.zig").Method;
 
 // Valid request line tests
 test "parse valid GET request line" {
@@ -12,7 +13,7 @@ test "parse valid GET request line" {
     var rl = result.complete.request_line;
     defer rl.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings("GET", rl.method);
+    try std.testing.expectEqual(Method.GET, rl.method);
     try std.testing.expectEqualStrings("/index.html", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }
@@ -26,7 +27,7 @@ test "parse valid POST request line" {
     var rl = result.complete.request_line;
     defer rl.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings("POST", rl.method);
+    try std.testing.expectEqual(Method.POST, rl.method);
     try std.testing.expectEqualStrings("/api/users", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }
@@ -40,7 +41,7 @@ test "parse valid DELETE request line" {
     var rl = result.complete.request_line;
     defer rl.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings("DELETE", rl.method);
+    try std.testing.expectEqual(Method.DELETE, rl.method);
     try std.testing.expectEqualStrings("/api/resource/123", rl.request_target);
 }
 
@@ -53,7 +54,7 @@ test "parse request line with query string" {
     var rl = result.complete.request_line;
     defer rl.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings("GET", rl.method);
+    try std.testing.expectEqual(Method.GET, rl.method);
     try std.testing.expectEqualStrings("/search?q=hello&page=1", rl.request_target);
 }
 
@@ -155,7 +156,7 @@ test "parseRequestLine valid line" {
     var rl = try requestLine.parseRequestLine(std.testing.allocator, &line);
     defer rl.deinit(std.testing.allocator);
 
-    try std.testing.expectEqualStrings("PUT", rl.method);
+    try std.testing.expectEqual(Method.PUT, rl.method);
     try std.testing.expectEqualStrings("/resource", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }

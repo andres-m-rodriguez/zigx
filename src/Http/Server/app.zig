@@ -15,32 +15,32 @@ pub const App = struct {
         return App{
             .allocator = allocator,
             .port = port,
-            .app_router = router.Router.init(allocator),
+            .app_router = router.Router.init(),
         };
     }
 
-    pub fn deinit(self: *App) void {
-        self.app_router.deinit();
+    pub fn deinit(self: *App, allocator: std.mem.Allocator) void {
+        self.app_router.deinit(allocator);
     }
 
     pub fn get(self: *App, path: []const u8, handler: router.Handler) void {
-        self.app_router.addRoute(.GET, path, handler) catch {};
+        self.app_router.addRoute(self.allocator, .GET, path, handler) catch {};
     }
 
     pub fn post(self: *App, path: []const u8, handler: router.Handler) void {
-        self.app_router.addRoute(.POST, path, handler) catch {};
+        self.app_router.addRoute(self.allocator, .POST, path, handler) catch {};
     }
 
     pub fn put(self: *App, path: []const u8, handler: router.Handler) void {
-        self.app_router.addRoute(.PUT, path, handler) catch {};
+        self.app_router.addRoute(self.allocator, .PUT, path, handler) catch {};
     }
 
     pub fn delete(self: *App, path: []const u8, handler: router.Handler) void {
-        self.app_router.addRoute(.DELETE, path, handler) catch {};
+        self.app_router.addRoute(self.allocator, .DELETE, path, handler) catch {};
     }
 
     pub fn patch(self: *App, path: []const u8, handler: router.Handler) void {
-        self.app_router.addRoute(.PATCH, path, handler) catch {};
+        self.app_router.addRoute(self.allocator, .PATCH, path, handler) catch {};
     }
 
     pub fn listen(self: *App) !void {
@@ -57,7 +57,11 @@ pub const App = struct {
         const path = request_line.request_target;
         const method = request_line.method;
 
-        const handler = self.app_router.match(method, path) orelse {
+        const match_result = self.app_router.match(
+            ctx.allocator,
+            method,
+            path,
+        ) orelse {
             // No route found → 404
             var headers = try Response.getDefaultResponseHeaders(ctx.allocator, 0);
             try headers.replace("Content-Type", "text/html", ctx.allocator);
@@ -74,10 +78,10 @@ pub const App = struct {
         };
 
         // Build RequestContext from ServerContext
-        var req_ctx = RequestContext.fromServerContext(ctx);
+        var req_ctx = RequestContext.fromServerContext(ctx, match_result.params);
 
         // Call user's handler
-        handler(&req_ctx) catch {
+        match_result.handler(&req_ctx) catch {
             if (!req_ctx.headers_sent) {
                 var headers = try Response.getDefaultResponseHeaders(ctx.allocator, 0);
 

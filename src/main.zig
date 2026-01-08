@@ -7,13 +7,14 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     var app = try App.init(allocator, 42069);
-    defer app.deinit();
+    defer app.deinit(allocator);
 
     // Register routes
     app.get("/", indexHandler);
     app.get("/users", usersHandler);
     app.post("/users", createUserHandler);
     app.get("/error", errorHandler);
+    app.get("/users/id:int", usersByIdHandler);
 
     try app.listen();
 }
@@ -30,6 +31,14 @@ fn indexHandler(ctx: *RequestContext) !void {
     );
 }
 
+fn usersByIdHandler(ctx: *RequestContext) !void {
+    const id = try ctx.params.get("id").?.asInt();
+
+    try ctx.jsonfmt(ctx.allocator, .{
+        .name = "Andres",
+        .id = id,
+    });
+}
 fn usersHandler(ctx: *RequestContext) !void {
     try ctx.json(
         \\{"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]}

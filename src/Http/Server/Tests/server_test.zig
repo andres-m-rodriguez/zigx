@@ -3,6 +3,7 @@ const App = @import("../app.zig").App;
 const RequestContext = @import("../app.zig").RequestContext;
 const Request = @import("../../Request/request.zig");
 const Response = @import("../../Response/response.zig");
+const Method = @import("../../Request/method.zig").Method;
 const net = std.net;
 
 fn testHandler(ctx: *RequestContext) !void {
@@ -20,7 +21,7 @@ test "no memory leaks - App route registration" {
     const allocator = std.testing.allocator;
 
     var app = try App.init(allocator, 0);
-    defer app.deinit();
+    defer app.deinit(allocator);
 
     app.get("/", testHandler);
     app.get("/error", testHandler);
@@ -41,7 +42,7 @@ test "no memory leaks - request parsing" {
 
     try std.testing.expect(req.request_line != null);
     try std.testing.expectEqualStrings("/", req.request_line.?.request_target);
-    try std.testing.expectEqualStrings("GET", req.request_line.?.method);
+    try std.testing.expectEqual(Method.GET, req.request_line.?.method);
 }
 
 test "no memory leaks - multiple request parsing" {
@@ -82,7 +83,7 @@ test "no memory leaks - with GPA explicit check" {
     app.get("/", testHandler);
     app.get("/api", testHandler);
     app.post("/data", testHandler);
-    app.deinit();
+    app.deinit(allocator);
 
     // Test request parsing multiple times
     for (0..10) |_| {

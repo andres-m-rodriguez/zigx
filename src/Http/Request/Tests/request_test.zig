@@ -1,6 +1,7 @@
 const std = @import("std");
 const http = @import("../request.zig");
 const root = @import("../../../root.zig");
+const Method = @import("../method.zig").Method;
 
 const ChunkReader = root.ChunkReader;
 
@@ -12,7 +13,7 @@ test "Good GET Request line" {
     var request = try http.requestFromReader(&reader, std.testing.allocator);
     defer request.deinit(std.testing.allocator);
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("GET", rl.method);
+    try std.testing.expectEqual(Method.GET, rl.method);
     try std.testing.expectEqualStrings("/", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }
@@ -24,7 +25,7 @@ test "Good GET Request line with path" {
     var request = try http.requestFromReader(&reader, std.testing.allocator);
     defer request.deinit(std.testing.allocator);
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("GET", rl.method);
+    try std.testing.expectEqual(Method.GET, rl.method);
     try std.testing.expectEqualStrings("/coffee", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }
@@ -38,7 +39,7 @@ test "Good GET Request line - chunked 3 bytes" {
     var request = try http.requestFromReader(chunk_reader.reader(), std.testing.allocator);
     defer request.deinit(std.testing.allocator);
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("GET", rl.method);
+    try std.testing.expectEqual(Method.GET, rl.method);
     try std.testing.expectEqualStrings("/", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }
@@ -51,7 +52,7 @@ test "Good GET Request line with path - chunked 1 byte" {
     var request = try http.requestFromReader(chunk_reader.reader(), std.testing.allocator);
     defer request.deinit(std.testing.allocator);
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("GET", rl.method);
+    try std.testing.expectEqual(Method.GET, rl.method);
     try std.testing.expectEqualStrings("/coffee", rl.request_target);
     try std.testing.expectEqualStrings("1.1", rl.http_version);
 }
@@ -66,7 +67,7 @@ test "POST request with JSON body" {
     defer request.deinit(std.testing.allocator);
 
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("POST", rl.method);
+    try std.testing.expectEqual(Method.POST, rl.method);
     try std.testing.expectEqualStrings("/api/data", rl.request_target);
     try std.testing.expectEqualStrings(body, request.request_body.items);
 }
@@ -80,7 +81,7 @@ test "POST request with form body" {
     defer request.deinit(std.testing.allocator);
 
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("POST", rl.method);
+    try std.testing.expectEqual(Method.POST, rl.method);
     try std.testing.expectEqualStrings(body, request.request_body.items);
 }
 
@@ -114,7 +115,7 @@ test "POST request with body - chunked 1 byte" {
     defer request.deinit(std.testing.allocator);
 
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("POST", rl.method);
+    try std.testing.expectEqual(Method.POST, rl.method);
     try std.testing.expectEqualStrings(body, request.request_body.items);
 }
 
@@ -139,7 +140,7 @@ test "PUT request with body" {
     defer request.deinit(std.testing.allocator);
 
     const rl = request.request_line orelse return error.MissingRequestLine;
-    try std.testing.expectEqualStrings("PUT", rl.method);
+    try std.testing.expectEqual(Method.PUT, rl.method);
     try std.testing.expectEqualStrings("/resource/1", rl.request_target);
     try std.testing.expectEqualStrings(body, request.request_body.items);
 }

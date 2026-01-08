@@ -1,8 +1,8 @@
 const std = @import("std");
 const Response = @import("../Response/response.zig");
 const Request = @import("../Request/request.zig");
+const router = @import("router.zig");
 
-/// Internal context passed from server to app layer
 pub const ServerContext = struct {
     allocator: std.mem.Allocator,
     writer: *Response.ResponseWriter,
@@ -10,18 +10,19 @@ pub const ServerContext = struct {
     app_instance: ?*anyopaque = null,
 };
 
-/// User-friendly context passed to route handlers
 pub const RequestContext = struct {
     allocator: std.mem.Allocator,
     writer: *Response.ResponseWriter,
     req: *Request.Request,
+    params: router.Params,
     headers_sent: bool = false,
 
-    pub fn fromServerContext(ctx: *ServerContext) RequestContext {
+    pub fn fromServerContext(ctx: *ServerContext, params: router.Params) RequestContext {
         return RequestContext{
             .allocator = ctx.allocator,
             .writer = ctx.writer,
             .req = ctx.req,
+            .params = params,
         };
     }
 
@@ -35,6 +36,13 @@ pub const RequestContext = struct {
 
     pub fn json(self: *RequestContext, body: []const u8) !void {
         try self.sendResponse(.StatusOk, "application/json", body);
+    }
+
+    pub fn jsonfmt(self: *RequestContext, allocator: std.mem.Allocator, val: anytype) !void {
+        const json_str = try std.json.Stringify.valueAlloc(allocator, val, .{});
+        defer allocator.free(json_str);
+
+        try self.sendResponse(.StatusOk, "application/json", json_str);
     }
 
     pub fn status(self: *RequestContext, status_code: Response.StatusCode) !void {

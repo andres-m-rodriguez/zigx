@@ -1,12 +1,12 @@
 const std = @import("std");
+const Method = @import("method.zig").Method;
 
 pub const RequestLine = struct {
     http_version: []const u8,
     request_target: []const u8,
-    method: []const u8,
+    method: Method,
 
     pub fn deinit(self: *RequestLine, allocator: std.mem.Allocator) void {
-        allocator.free(self.method);
         allocator.free(self.request_target);
         allocator.free(self.http_version);
     }
@@ -67,14 +67,14 @@ pub fn parseRequestLine(allocator: std.mem.Allocator, line: []u8) Error!RequestL
     _ = version_iterator.next() orelse return Error.MalformedRequestLine; // "HTTP"
     const version_value = version_iterator.next() orelse return Error.MalformedRequestLine;
 
-    const method = try allocator.dupe(u8, method_raw);
-    errdefer allocator.free(method);
+    const http_method = Method.fromString(method_raw) orelse return error.InvalidMethod;
+
     const request_target = try allocator.dupe(u8, target_raw);
     errdefer allocator.free(request_target);
     const http_version = try allocator.dupe(u8, version_value);
 
     return RequestLine{
-        .method = method,
+        .method = http_method,
         .request_target = request_target,
         .http_version = http_version,
     };

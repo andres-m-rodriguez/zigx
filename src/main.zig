@@ -1,15 +1,13 @@
 const std = @import("std");
-const App = @import("Http/Server/app.zig").App;
-const RequestContext = @import("Http/Server/app.zig").RequestContext;
+const zigx = @import("zigx.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var app = try App.init(allocator, 42069);
+    var app = try zigx.App.init(allocator, 42069);
     defer app.deinit(allocator);
 
-    // Register routes
     app.get("/", indexHandler);
     app.get("/users", usersHandler);
     app.post("/users", createUserHandler);
@@ -19,41 +17,31 @@ pub fn main() !void {
     try app.listen();
 }
 
-fn indexHandler(ctx: *RequestContext) !void {
-    try ctx.html(
-        \\<html>
-        \\  <head><title>Home</title></head>
-        \\  <body>
-        \\    <h1>Welcome!</h1>
-        \\    <p>Your request was an absolute banger.</p>
-        \\  </body>
-        \\</html>
-    );
+fn indexHandler(ctx: *zigx.RequestContext) !zigx.Response {
+    return zigx.Response.fmtHtml(ctx.allocator, @embedFile("index.html"), .{"Andres"});
 }
-
-fn usersByIdHandler(ctx: *RequestContext) !void {
+fn usersByIdHandler(ctx: *zigx.RequestContext) !zigx.Response {
     const id = try ctx.params.get("id").?.asInt();
-
-    try ctx.jsonfmt(ctx.allocator, .{
-        .name = "Andres",
+    return try zigx.Response.fmtJson(ctx.allocator, .{
+        .name = "User",
         .id = id,
     });
 }
-fn usersHandler(ctx: *RequestContext) !void {
-    try ctx.json(
+
+fn usersHandler(_: *zigx.RequestContext) !zigx.Response {
+    return zigx.Response.json(
         \\{"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]}
     );
 }
 
-fn createUserHandler(ctx: *RequestContext) !void {
-    _ = ctx.req.request_body.items; // Access POST body if needed
-    try ctx.json(
+fn createUserHandler(_: *zigx.RequestContext) !zigx.Response {
+    return zigx.Response.json(
         \\{"status": "created", "id": 3}
-    );
+    ).withStatus(.created);
 }
 
-fn errorHandler(ctx: *RequestContext) !void {
-    try ctx.sendResponse(.StatusInternalServerError, "text/html",
+fn errorHandler(_: *zigx.RequestContext) !zigx.Response {
+    return zigx.Response.html(
         \\<html>
         \\  <head><title>500 Error</title></head>
         \\  <body>
@@ -61,5 +49,5 @@ fn errorHandler(ctx: *RequestContext) !void {
         \\    <p>Okay, you know what? This one is on me.</p>
         \\  </body>
         \\</html>
-    );
+    ).withStatus(.internal_server_error);
 }

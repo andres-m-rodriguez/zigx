@@ -2,9 +2,15 @@ const std = @import("std");
 const router = @import("router.zig");
 const server = @import("server.zig");
 const context = @import("context.zig");
-pub const Request = server.Request;
-pub const Response = server.Response;
+const response_mod = @import("../Response/response.zig");
+
+pub const Response = response_mod.Response;
+pub const StatusCode = response_mod.StatusCode;
 pub const RequestContext = context.RequestContext;
+pub const Handler = router.Handler;
+pub const Params = router.Params;
+pub const Param = router.Param;
+pub const Method = router.Method;
 
 pub const App = struct {
     allocator: std.mem.Allocator,
@@ -23,23 +29,23 @@ pub const App = struct {
         self.app_router.deinit(allocator);
     }
 
-    pub fn get(self: *App, path: []const u8, handler: router.Handler) void {
+    pub fn get(self: *App, path: []const u8, handler: Handler) void {
         self.app_router.addRoute(self.allocator, .GET, path, handler) catch {};
     }
 
-    pub fn post(self: *App, path: []const u8, handler: router.Handler) void {
+    pub fn post(self: *App, path: []const u8, handler: Handler) void {
         self.app_router.addRoute(self.allocator, .POST, path, handler) catch {};
     }
 
-    pub fn put(self: *App, path: []const u8, handler: router.Handler) void {
+    pub fn put(self: *App, path: []const u8, handler: Handler) void {
         self.app_router.addRoute(self.allocator, .PUT, path, handler) catch {};
     }
 
-    pub fn delete(self: *App, path: []const u8, handler: router.Handler) void {
+    pub fn delete(self: *App, path: []const u8, handler: Handler) void {
         self.app_router.addRoute(self.allocator, .DELETE, path, handler) catch {};
     }
 
-    pub fn patch(self: *App, path: []const u8, handler: router.Handler) void {
+    pub fn patch(self: *App, path: []const u8, handler: Handler) void {
         self.app_router.addRoute(self.allocator, .PATCH, path, handler) catch {};
     }
 
@@ -62,39 +68,25 @@ pub const App = struct {
             method,
             path,
         ) orelse {
-            // No route found → 404
-            var headers = try Response.getDefaultResponseHeaders(ctx.allocator, 0);
-            try headers.replace("Content-Type", "text/html", ctx.allocator);
-
-            const body = "<h1>404 Not Found</h1>";
-            var len_buf: [20]u8 = undefined;
-            const len_str = std.fmt.bufPrint(&len_buf, "{d}", .{body.len}) catch unreachable;
-            try headers.replace("Content-Length", len_str, ctx.allocator);
-
-            try ctx.writer.writeStatusLine(.StatusNotFound);
-            try ctx.writer.writeHeaders(&headers);
-            _ = try ctx.writer.writeBody(body);
+            const not_found = Response.notFound();
+            try ctx.writer.writeResponse(ctx.allocator, not_found);
             return;
         };
 
-        // Build RequestContext from ServerContext
-        var req_ctx = RequestContext.fromServerContext(ctx, match_result.params);
+        var req_ctx = RequestContext{
+            .allocator = ctx.allocator,
+            .request = ctx.req,
+            .params = match_result.params,
+            .writer = ctx.writer,
+        };
 
-        // Call user's handler
-        match_result.handler(&req_ctx) catch {
-            if (!req_ctx.headers_sent) {
-                var headers = try Response.getDefaultResponseHeaders(ctx.allocator, 0);
-
-                const body = "<h1>500 Internal Server Error</h1>";
-                var len_buf: [20]u8 = undefined;
-                const len_str = std.fmt.bufPrint(&len_buf, "{d}", .{body.len}) catch unreachable;
-                try headers.replace("Content-Length", len_str, ctx.allocator);
-
-                try ctx.writer.writeStatusLine(.StatusInternalServerError);
-                try ctx.writer.writeHeaders(&headers);
-                _ = try ctx.writer.writeBody(body);
-            }
+        const user_response = match_result.handler(&req_ctx) catch {
+            const error_response = Response.internalError();
+            try ctx.writer.writeResponse(ctx.allocator, error_response);
             return;
         };
+        defer user_response.deinit(ctx.allocator);
+
+        try ctx.writer.writeResponse(ctx.allocator, user_response);
     }
 };

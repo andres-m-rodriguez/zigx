@@ -77,7 +77,7 @@ fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Con
     };
 
     var req = Request.requestFromReader(stream_reader.interface(), request_allocator) catch {
-        response_writer.writeStatusLine(Response.StatusCode.StatusInternalServerError) catch return;
+        response_writer.writeStatusLine(.internal_server_error) catch return;
         response_writer.writeHeaders(&default_headers) catch return;
         return;
     };
@@ -95,7 +95,7 @@ fn handleConnection(allocator: std.mem.Allocator, connection: std.net.Server.Con
 
     httpServer.handler(&ctx) catch |err| {
         std.debug.print("{}", .{err});
-        response_writer.writeStatusLine(Response.StatusCode.StatusInternalServerError) catch return;
+        response_writer.writeStatusLine(.internal_server_error) catch return;
         response_writer.writeHeaders(&default_headers) catch return;
         return;
     };

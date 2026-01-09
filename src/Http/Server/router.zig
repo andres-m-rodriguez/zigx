@@ -1,5 +1,5 @@
 const std = @import("std");
-const RequestContext = @import("context.zig").RequestContext;
+const Response = @import("../Response/response.zig").Response;
 pub const Method = @import("../Request/method.zig").Method;
 
 const RouteContext = struct {
@@ -13,9 +13,10 @@ const RouteContext = struct {
     }
 };
 
-pub const Handler = *const fn (ctx: *RequestContext) anyerror!void;
+pub const RequestContext = @import("context.zig").RequestContext;
 
-//api/users/id:int
+pub const Handler = *const fn (ctx: *RequestContext) anyerror!Response;
+
 pub const Node = struct {
     param_information: ?ParamInformation,
     path: []const u8,
@@ -114,14 +115,10 @@ pub const ParamInformation = struct {
     param_type: ParamTypes,
     name: []const u8,
 
-    /// Checks if a path segment is a param (contains ':')
-    /// Format: name:type (e.g., "id:int", "user_id:str")
     pub fn isParam(segment: []const u8) bool {
         return std.mem.indexOfScalar(u8, segment, ':') != null;
     }
 
-    /// Parses a segment like "id:int" or "name:str" into ParamInformation
-    /// Returns null if not a param segment
     pub fn parse(segment: []const u8) ?ParamInformation {
         const colon_index = std.mem.indexOfScalar(u8, segment, ':') orelse return null;
 
@@ -189,13 +186,11 @@ pub const Router = struct {
             break :blk self.routes.getPtr(root_copy).?;
         };
 
-        // Walk remaining segments
         while (it.next()) |segment| {
             const is_last = it.peek() == null;
             const param_info = ParamInformation.parse(segment);
 
             if (param_info) |param| {
-                // PARAM NODE
                 if (current.next_param_node) |next| {
                     current = next;
                 } else {
@@ -204,7 +199,6 @@ pub const Router = struct {
                     current = node;
                 }
             } else {
-                // STATIC NODE
                 if (current.nodes.getPtr(segment)) |next| {
                     current = next;
                 } else {
@@ -231,7 +225,6 @@ pub const Router = struct {
 
         var params_list = std.ArrayListUnmanaged(Param){};
         while (path_it.next()) |next_path| {
-            // Try static node first, then fall back to param node
             if (current_node.nodes.get(next_path)) |node| {
                 current_node = node;
             } else if (current_node.next_param_node) |param_node| {
@@ -260,9 +253,12 @@ pub const Router = struct {
     }
 };
 
-// Test handlers
-fn testHandlerA(_: *RequestContext) anyerror!void {}
-fn testHandlerB(_: *RequestContext) anyerror!void {}
+fn testHandlerA(_: *RequestContext) anyerror!Response {
+    return Response.text("handler A");
+}
+fn testHandlerB(_: *RequestContext) anyerror!Response {
+    return Response.text("handler B");
+}
 
 test "router1" {
     var rtr = Router.init();
@@ -311,12 +307,10 @@ test "router4 - param extraction" {
     try std.testing.expect(result != null);
     try std.testing.expect(result.?.handler == testHandlerA);
 
-    // Test param extraction
     const id_param = result.?.params.get("id");
     try std.testing.expect(id_param != null);
     try std.testing.expectEqualStrings("42", id_param.?.value);
 
-    // Test asInt conversion
     const id_int = try id_param.?.asInt();
     try std.testing.expect(id_int == 42);
 }

@@ -1,6 +1,25 @@
 @route("/counter/initial:int")
-<h1>Counter: @counter</h1>
-<button>Increment</button>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow text-center">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Counter</h4>
+                </div>
+                <div class="card-body py-5">
+                    <h1 class="display-1 fw-bold text-primary">@counter</h1>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-success btn-lg px-5">
+                        <span class="me-2">+</span> Increment
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 @server{
     const std = @import("std");
@@ -10,5 +29,20 @@
         if (ctx.getParam("initial")) |initial_str| {
             counter = std.fmt.parseInt(usize, initial_str, 10) catch 0;
         }
+    }
+
+    // Custom API routes - pure Zig!
+    pub fn routes(app: *app_mod.App) void {
+        app.get("/api/counter", getCounter);
+        app.post("/api/counter/increment", incrementCounter);
+    }
+
+    fn getCounter(_: *RequestContext) !Response {
+        return Response.json("{\"count\": 0}");
+    }
+
+    fn incrementCounter(_: *RequestContext) !Response {
+        counter += 1;
+        return Response.json("{\"count\": 1}");
     }
 }

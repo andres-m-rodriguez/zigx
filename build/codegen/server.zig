@@ -73,13 +73,16 @@ fn writeHandler(w: *Writer, doc: zigxCompiler.ZigxDocument) !void {
 }
 
 fn writeDynamicResponse(w: *Writer, doc: zigxCompiler.ZigxDocument) !void {
+    for (doc.expressions, 0..) |expr, i| {
+        try w.print("    const " ++ common.placeholders.VAL_PREFIX ++ "{d} = {s};\n", .{ i, expr });
+    }
+
     try w.writeAll("    return Response.fmtHtml(ctx.allocator,\n");
     try w.writeAll("        \"<!DOCTYPE html><html><head><title>");
     try w.writeAll(doc.file_name);
     try w.writeAll("</title></head><body>");
 
-    // Write format-escaped HTML content
-    try common.writeFormatString(w, doc.html_content);
+    try writeFormatStringWithComptimeSpecs(w, doc.html_content);
 
     // Client WASM reference
     if (doc.client_code.len > 0) {
@@ -89,14 +92,47 @@ fn writeDynamicResponse(w: *Writer, doc: zigxCompiler.ZigxDocument) !void {
     try w.writeAll("</body></html>\",\n");
     try w.writeAll("        .{");
 
-    // Write expression arguments (e.g., .{getTitle(), counter, getName()})
-    for (doc.expressions, 0..) |expr, i| {
+    // Reference the declared variables
+    for (doc.expressions, 0..) |_, i| {
         if (i > 0) try w.writeAll(", ");
-        try w.writeAll(expr);
+        try w.print(common.placeholders.VAL_PREFIX ++ "{d}", .{i});
     }
 
     try w.writeAll(" },\n");
     try w.writeAll("    );\n");
+}
+
+// Writes the HTML content, replacing placeholders with comptime zigxFmtSpec calls
+fn writeFormatStringWithComptimeSpecs(w: *Writer, content: []const u8) !void {
+    var i: usize = 0;
+
+    while (i < content.len) {
+        // Check for expression placeholder (e.g., __ZIGX_EXPR_0__)
+        if (common.placeholders.detectPlaceholder(content, i)) |len| {
+            // Extract the index from the placeholder
+            const placeholder = content[i .. i + len];
+            if (common.placeholders.parseIndex(placeholder)) |idx| {
+                // Close current string, add format spec based on type, reopen string
+                try w.writeAll("\" ++ zigxFmtSpec(@TypeOf(" ++ common.placeholders.VAL_PREFIX);
+                try w.print("{d}", .{idx});
+                try w.writeAll(")) ++ \"");
+            }
+            i += len;
+            continue;
+        }
+
+        const c = content[i];
+        switch (c) {
+            '{' => try w.writeAll("{{"),
+            '}' => try w.writeAll("}}"),
+            '\n' => try w.writeAll("\\n"),
+            '\r' => try w.writeAll("\\r"),
+            '"' => try w.writeAll("\\\""),
+            '\\' => try w.writeAll("\\\\"),
+            else => try w.writeByte(c),
+        }
+        i += 1;
+    }
 }
 
 fn writeStaticResponse(w: *Writer, doc: zigxCompiler.ZigxDocument) !void {

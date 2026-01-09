@@ -15,14 +15,12 @@ pub fn writeEscapedString(w: *Writer, content: []const u8) !void {
     }
 }
 
-// Escapes { } and replaces expression placeholders with {any}
 pub fn writeFormatString(w: *Writer, content: []const u8) !void {
     var i: usize = 0;
 
     while (i < content.len) {
-        // Check for expression placeholder (e.g., __ZIGX_EXPR_0__)
         if (placeholders.detectPlaceholder(content, i)) |len| {
-            try w.writeAll("{any}");
+            try w.writeAll("{s}");
             i += len;
             continue;
         }
@@ -60,6 +58,17 @@ pub const server_imports =
     \\const Response = app_mod.Response;
     \\const RequestContext = app_mod.RequestContext;
     \\const PageContext = context_mod.PageContext;
+    \\
+    \\
+    \\fn zigxFmtSpec(comptime T: type) []const u8 {
+    \\    return switch (@typeInfo(T)) {
+    \\        .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8) "{s}" else "{any}",
+    \\        .int, .comptime_int => "{d}",
+    \\        .float, .comptime_float => "{d}",
+    \\        .bool => "{}",
+    \\        else => "{any}",
+    \\    };
+    \\}
     \\
 ;
 //Just placeholder for now but someday!

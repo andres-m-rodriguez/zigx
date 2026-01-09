@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const EXPR_PREFIX = "__ZIGX_EXPR_";
 pub const EXPR_SUFFIX = "__";
+pub const VAL_PREFIX = "__zigx_val_";
 
 pub fn createPlaceholder(buf: []u8, index: usize) ![]const u8 {
     return std.fmt.bufPrint(buf, "{s}{d}{s}", .{ EXPR_PREFIX, index, EXPR_SUFFIX });

@@ -1,0 +1,12 @@
+@route("/about")
+<h1>About</h1>
+<p>Zigx is a web framework built with Zig.</p>
+<a href="/">Home</a>
+
+@server{
+    const std = @import("std");
+
+    pub fn getTitle() []const u8 {
+        return "About";
+    }
+}

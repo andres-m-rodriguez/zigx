@@ -11,6 +11,45 @@ pub const ServerContext = struct {
     app_instance: ?*anyopaque = null,
 };
 
+// Context for .zigx pages - read-only, no response writing
+pub const PageContext = struct {
+    allocator: std.mem.Allocator,
+    request: *const Request.Request,
+    params: router.Params,
+
+    pub fn getParam(self: *const PageContext, name: []const u8) ?[]const u8 {
+        if (self.params.get(name)) |param| {
+            return param.value;
+        }
+        return null;
+    }
+
+    pub fn body(self: *const PageContext) []const u8 {
+        return self.request.request_body.items;
+    }
+
+    pub fn getHeader(self: *const PageContext, name: []const u8) ?[]const u8 {
+        if (self.request.request_headers) |*headers| {
+            return headers.get(name);
+        }
+        return null;
+    }
+
+    pub fn method(self: *const PageContext) ?@import("../Request/method.zig").Method {
+        if (self.request.request_line) |line| {
+            return line.method;
+        }
+        return null;
+    }
+
+    pub fn path(self: *const PageContext) ?[]const u8 {
+        if (self.request.request_line) |line| {
+            return line.request_target;
+        }
+        return null;
+    }
+};
+
 pub const RequestContext = struct {
     allocator: std.mem.Allocator,
     request: *const Request.Request,

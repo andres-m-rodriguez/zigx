@@ -7,6 +7,7 @@ pub fn main() !void {
 
     var app = try zigx.App.init(allocator, 42069);
     defer app.deinit(allocator);
+    app.addZigxPages();
 
     app.get("/", indexHandler);
     app.get("/users", usersHandler);

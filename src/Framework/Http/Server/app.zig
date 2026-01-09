@@ -3,6 +3,7 @@ const router = @import("router.zig");
 const server = @import("server.zig");
 const context = @import("context.zig");
 const response_mod = @import("../Response/response.zig");
+const routes = @import("../../../gen/routes.zig");
 
 pub const Response = response_mod.Response;
 pub const StatusCode = response_mod.StatusCode;
@@ -47,6 +48,10 @@ pub const App = struct {
 
     pub fn patch(self: *App, path: []const u8, handler: Handler) void {
         self.app_router.addRoute(self.allocator, .PATCH, path, handler) catch {};
+    }
+
+    pub fn addZigxPages(self: *App) void {
+        routes.registerRoutes(self);
     }
 
     pub fn listen(self: *App) !void {

@@ -1,6 +1,6 @@
 const std = @import("std");
 const http = @import("../request.zig");
-const root = @import("../../../root.zig");
+const root = @import("../../../../root.zig");
 const Method = @import("../method.zig").Method;
 
 const ChunkReader = root.ChunkReader;

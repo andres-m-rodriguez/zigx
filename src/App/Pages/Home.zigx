@@ -1,0 +1,21 @@
+@route("/")
+<h1>@{getTitle()}</h1>
+<p>Welcome to @{getFrameworkName()}!</p>
+<a href="/about">About</a>
+@user_name
+
+
+@server{
+    const std = @import("std");
+    var user_name: []const u8 = undefined;
+    pub fn init() !void {
+        user_name = "Andres";
+    }
+    pub fn getTitle() []const u8 {
+        return "Home";
+    }
+
+    pub fn getFrameworkName() []const u8 {
+        return "Zigx Framework";
+    }
+}

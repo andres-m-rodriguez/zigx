@@ -41,19 +41,72 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // Here we define an executable. An executable needs to have a root module
-    // which needs to expose a `main` function. While we could add a main function
-    // to the module defined above, it's sometimes preferable to split business
-    // logic and the CLI into two separate modules.
-    //
-    // If your goal is to create a Zig library for others to use, consider if
-    // it might benefit from also exposing a CLI tool. A parser library for a
-    // data serialization format could also bundle a CLI syntax checker, for example.
-    //
-    // If instead your goal is to create an executable, consider if users might
-    // be interested in also being able to embed the core functionality of your
-    // program in their own executable in order to avoid the overhead involved in
-    // subprocessing your CLI tool.
+    // Create the zigxCompiler module first so it can be shared
+    const zigx_compiler_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Compiler/zigxCompiler.zig"),
+        .target = b.graph.host,
+    });
+
+    // Create codegen modules with zigxCompiler dependency
+    const codegen_placeholders = b.createModule(.{
+        .root_source_file = b.path("build/codegen/placeholders.zig"),
+        .target = b.graph.host,
+    });
+
+    const codegen_common = b.createModule(.{
+        .root_source_file = b.path("build/codegen/common.zig"),
+        .target = b.graph.host,
+        .imports = &.{
+            .{ .name = "placeholders", .module = codegen_placeholders },
+        },
+    });
+
+    const codegen_server = b.createModule(.{
+        .root_source_file = b.path("build/codegen/server.zig"),
+        .target = b.graph.host,
+        .imports = &.{
+            .{ .name = "common", .module = codegen_common },
+            .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+        },
+    });
+
+    const codegen_client = b.createModule(.{
+        .root_source_file = b.path("build/codegen/client.zig"),
+        .target = b.graph.host,
+        .imports = &.{
+            .{ .name = "common", .module = codegen_common },
+            .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+        },
+    });
+
+    const codegen_routes = b.createModule(.{
+        .root_source_file = b.path("build/codegen/routes.zig"),
+        .target = b.graph.host,
+        .imports = &.{
+            .{ .name = "common", .module = codegen_common },
+            .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+        },
+    });
+
+    const zigx_generator = b.addExecutable(.{
+        .name = "zigx_generator",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("build/gen_zigx.zig"),
+            .target = b.graph.host,
+            .imports = &.{
+                .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+                .{ .name = "codegen/server.zig", .module = codegen_server },
+                .{ .name = "codegen/client.zig", .module = codegen_client },
+                .{ .name = "codegen/routes.zig", .module = codegen_routes },
+            },
+        }),
+    });
+
+    // Run the generator - outputs to src/gen/ (gitignored)
+    // Creates: src/gen/routes.zig, src/gen/server/*.zig, src/gen/client/*.zig
+    const zigx_files_scanner = b.addRunArtifact(zigx_generator);
+    zigx_files_scanner.addArg("src/gen/routes.zig");
+
     //
     // If neither case applies to you, feel free to delete the declaration you
     // don't need and to put everything under a single module.
@@ -82,7 +135,8 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-
+    // Ensure generator runs before compilation
+    exe.step.dependOn(&zigx_files_scanner.step);
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden
@@ -121,6 +175,7 @@ pub fn build(b: *std.Build) void {
     const mod_tests = b.addTest(.{
         .root_module = mod,
     });
+    mod_tests.step.dependOn(&zigx_files_scanner.step);
 
     // A run step that will run the test executable.
     const run_mod_tests = b.addRunArtifact(mod_tests);
@@ -131,6 +186,7 @@ pub fn build(b: *std.Build) void {
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });
+    exe_tests.step.dependOn(&zigx_files_scanner.step);
 
     // A run step that will run the second test executable.
     const run_exe_tests = b.addRunArtifact(exe_tests);

@@ -45,6 +45,15 @@ pub const Response = struct {
         };
     }
 
+    pub fn htmlOwned(body: []const u8) Response {
+        return .{
+            .status_code = .ok,
+            .content_type = "text/html",
+            .body = body,
+            .owned = true,
+        };
+    }
+
     pub fn text(body: []const u8) Response {
         return .{
             .status_code = .ok,

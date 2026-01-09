@@ -1,5 +1,5 @@
 const std = @import("std");
-const app_mod = @import("Http/Server/app.zig");
+const app_mod = @import("Framework/Http/Server/app.zig");
 
 pub const App = app_mod.App;
 pub const Response = app_mod.Response;

@@ -1,138 +1,231 @@
 # Zigx
 
-> **Warning**: This is an experimental toy project. Do not use in production.
+> **Warning**: This is an experimental toy project. Do not use in production.....like at all!
 
-Zigx is a proof-of-concept full-stack web framework written in Zig. It explores the idea of single-file components that compile to both server-side Zig and client-side WebAssembly.
+Zigx is a proof-of-concept full-stack web framework written in Zig. It explores the idea of single-file `.zigx` components that compile to server-side Zig code with plans for client-side WebAssembly.
 
 ## Status
 
 **Experimental** - This project exists for learning and exploration. Expect breaking changes, incomplete features, and rough edges.
 
-## Vision
+## Quick Start
 
-Zigx aims to provide a unified development experience where a single `.zigx` file contains:
+```zig
+const std = @import("std");
+const zigx = @import("zigx.zig");
 
-- HTML templates with reactive bindings
-- Client-side logic that compiles to WASM
-- Server-side logic for data loading and SSR
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
 
-### Example Component
+    var app = try zigx.App.init(allocator, 8080);
+    defer app.deinit(allocator);
 
-```zigx
-<div class="todo-app">
-    <h1>Todos (@todos.items.len remaining)</h1>
+    // Register .zigx pages automatically
+    app.addZigxPages();
 
-    <input @bind="new_todo_text" placeholder="What needs to be done?" />
-    <button @onclick="addTodo">Add</button>
+    // Or add manual routes
+    app.get("/api/hello", helloHandler);
 
-    <ul>
-        @for (todos.items) |todo| {
-            <li class="@if (todo.completed) 'done' else ''">
-                <input type="checkbox"
-                       checked="@todo.completed"
-                       @onclick="toggleTodo(todo.id)" />
-                <span>@todo.text</span>
-                <button @onclick="deleteTodo(todo.id)">x</button>
-            </li>
-        }
-    </ul>
-
-    <p>Loaded @initial_count todos from database</p>
-</div>
-
-@server {
-    const db = @import("db.zig");
-
-    pub const Todo = struct {
-        id: usize,
-        text: []const u8,
-        completed: bool,
-    };
-
-    // Runs on page load - fetches initial data for SSR
-    pub fn load(allocator: Allocator) ![]Todo {
-        return try db.query(allocator, "SELECT * FROM todos WHERE user_id = ?", .{ctx.user.id});
-    }
+    try app.listen();
 }
 
-@client {
-    // State - initialized from @server.load() result
-    todos: std.ArrayList(Todo),
-    new_todo_text: []const u8 = "",
-    initial_count: usize,
+fn helloHandler(ctx: *zigx.RequestContext) !zigx.Response {
+    return zigx.Response.json(
+        \\{"message": "Hello, World!"}
+    );
+}
+```
 
-    pub fn init(server_data: []Todo) void {
-        initial_count = server_data.len;
-        todos = std.ArrayList(Todo).fromSlice(allocator, server_data);
+## The `.zigx` Format
+
+Zigx uses a custom single-file component format that combines HTML templates with server-side Zig code.
+
+### Basic Page
+
+```zigx
+@route("/")
+
+<h1>@{getTitle()}</h1>
+<p>Welcome to @{getFrameworkName()}!</p>
+<p>Hello, @user_name!</p>
+
+<a href="/about">About</a>
+
+@server{
+    const std = @import("std");
+    var user_name: []const u8 = undefined;
+
+    pub fn init() !void {
+        user_name = "World";
     }
 
-    pub fn addTodo() !void {
-        if (new_todo_text.len == 0) return;
-
-        const todo = Todo{
-            .id = generateId(),
-            .text = new_todo_text,
-            .completed = false,
-        };
-        try todos.append(todo);
-        new_todo_text = "";
-
-        // Sync to server
-        try @fetch("/api/todos", .{ .method = .POST, .body = todo });
+    pub fn getTitle() []const u8 {
+        return "Home";
     }
 
-    pub fn toggleTodo(id: usize) void {
-        for (todos.items) |*todo| {
-            if (todo.id == id) {
-                todo.completed = !todo.completed;
-                break;
-            }
-        }
-    }
-
-    pub fn deleteTodo(id: usize) void {
-        todos.items = filter(todos.items, |t| t.id != id);
-        try @fetch("/api/todos/" ++ id, .{ .method = .DELETE });
+    pub fn getFrameworkName() []const u8 {
+        return "Zigx Framework";
     }
 }
 ```
 
-This example demonstrates:
+### Route Parameters
 
-| Feature | How it's used |
-|---------|---------------|
-| Server data loading | `@server.load()` fetches todos from database |
-| SSR | Initial HTML rendered with todo list on server |
-| Hydration | `@client.init()` receives server data when WASM loads |
-| Reactive state | `todos`, `new_todo_text` trigger re-renders on change |
-| Event binding | `@onclick`, `@bind` connect DOM to WASM handlers |
-| Control flow | `@for`, `@if` in templates |
-| Server sync | `@fetch` calls back to server API |
+Routes support typed parameters that are automatically parsed:
 
-### Expected Output
+```zigx
+@route("/counter/:initial:int")
 
-When compiled, a `.zigx` file produces:
+<h1>Counter</h1>
+<p>Value: @counter</p>
 
-| Output | Description |
-|--------|-------------|
-| Server module | Zig code that handles SSR and data loading |
-| Client WASM | WebAssembly binary for browser interactivity |
-| Hydration glue | JavaScript to load WASM and bind events |
+@server{
+    const std = @import("std");
+    var counter: usize = 0;
+
+    pub fn init(ctx: *const PageContext) !void {
+        if (ctx.getParam("initial")) |initial_str| {
+            counter = std.fmt.parseInt(usize, initial_str, 10) catch 0;
+        }
+    }
+}
+```
+
+### API Routes
+
+Pages can define additional API endpoints using the `routes()` function:
+
+```zigx
+@route("/users")
+
+<h1>Users</h1>
+<div id="users-list">Loading...</div>
+
+<script>
+    fetch('/api/users')
+        .then(res => res.json())
+        .then(data => {
+            const list = document.getElementById('users-list');
+            list.innerHTML = data.users.map(u =>
+                `<div>${u.name} - ${u.email}</div>`
+            ).join('');
+        });
+</script>
+
+@server{
+    pub fn routes(app: *app_mod.App) void {
+        app.get("/api/users", getUsers);
+        app.post("/api/users", createUser);
+    }
+
+    fn getUsers(_: *RequestContext) !Response {
+        return Response.json(
+            \\{"users": [
+            \\  {"id": 1, "name": "Alice", "email": "alice@example.com"},
+            \\  {"id": 2, "name": "Bob", "email": "bob@example.com"}
+            \\]}
+        );
+    }
+
+    fn createUser(ctx: *RequestContext) !Response {
+        // Access request body, headers, etc.
+        _ = ctx;
+        return Response.json(
+            \\{"status": "created", "id": 3}
+        ).withStatus(.created);
+    }
+}
+```
+
+## Features
+
+### HTTP Server
+
+| Feature | Description |
+|---------|-------------|
+| Routing | `app.get()`, `app.post()`, `app.put()`, `app.delete()`, `app.patch()` |
+| Route params | `/users/:id:int`, `/posts/:slug:str`, `/items/:uuid:guid` |
+| JSON responses | `Response.json(...)` or `Response.fmtJson(allocator, struct)` |
+| HTML responses | `Response.html(...)` or `Response.fmtHtml(allocator, template, args)` |
+| Status codes | `.withStatus(.created)`, `.withStatus(.not_found)`, etc. |
+| Request context | Access to params, headers, body via `RequestContext` |
+
+### `.zigx` Compilation
+
+| Feature | Description |
+|---------|-------------|
+| Route directive | `@route("/path")` defines the page URL |
+| Expressions | `@{expression}` or `@variable` for dynamic content |
+| Server block | `@server{...}` contains Zig code for SSR |
+| Init function | `pub fn init()` or `pub fn init(ctx: *const PageContext)` |
+| Custom routes | `pub fn routes(app: *App)` to register API endpoints |
+| Auto-registration | `app.addZigxPages()` registers all `.zigx` files |
+
+### Response Examples
+
+```zig
+// Static JSON
+Response.json(\\{"status": "ok"})
+
+// Dynamic JSON from struct
+Response.fmtJson(allocator, .{
+    .name = "User",
+    .id = 42,
+})
+
+// Static HTML
+Response.html("<h1>Hello</h1>")
+
+// Templated HTML
+Response.fmtHtml(allocator, "<h1>Hello, {s}!</h1>", .{"World"})
+
+// With status code
+Response.json(\\{"error": "not found"}).withStatus(.not_found)
+```
+
+## Project Structure
+
+```
+Zigx/
+├── src/
+│   ├── main.zig              # Entry point
+│   ├── zigx.zig              # Public API exports
+│   ├── Framework/
+│   │   ├── Compiler/         # .zigx lexer and parser
+│   │   └── Http/             # Server, router, request/response
+│   └── App/
+│       └── Pages/            # Your .zigx pages go here
+│           ├── Home.zigx
+│           ├── About.zigx
+│           └── ...
+├── build/
+│   ├── gen_zigx.zig          # Code generator
+│   └── codegen/              # Code generation modules
+└── src/gen/                  # Auto-generated (gitignored)
+    ├── routes.zig            # Route registry
+    └── server/               # Generated handlers
+```
 
 ## Current State
 
-The HTTP server foundation is functional:
+**What's working:**
 
-- HTTP/1.1 request parsing
-- Multi-threaded connection handling
-- Route registration (GET, POST, PUT, DELETE, etc.)
-- Response generation
+- HTTP/1.1 server with multi-threaded connection handling
+- Trie-based router with typed parameters
+- `.zigx` file parsing and lexing
+- Server-side code generation from `.zigx` files
+- Expression interpolation with comptime type detection
+- JSON and HTML response builders
+- Route registration via `@server{ pub fn routes(...) }`
+- Page initialization with `init()` / `init(ctx)`
 
-What's not built yet:
+**What's not built yet:**
 
-- `.zigx` file parser
-- Template compilation
-- WASM code generation
+- Client-side WASM compilation (`@client{}` blocks)
+- Reactive data binding (`@bind`)
+- Event handlers (`@onclick`)
+- Template control flow (`@for`, `@if`)
 - Client-server hydration
 
 ## Goals

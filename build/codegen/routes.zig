@@ -49,11 +49,28 @@ fn writeRegisterFunction(w: *Writer, documents: []const zigxCompiler.ZigxDocumen
         \\
     );
 
+    // Register page handlers
     for (documents) |doc| {
         try w.print(
             \\    app.get("{s}", {s}_server.handler);
             \\
         , .{ doc.route, doc.file_name });
+    }
+
+    try w.writeAll(
+        \\
+        \\    // Register custom API routes if defined
+        \\
+    );
+
+    // Call routes(app) if defined in each server module
+    for (documents) |doc| {
+        try w.print(
+            \\    if (@hasDecl({s}_server, "routes")) {{
+            \\        {s}_server.routes(app);
+            \\    }}
+            \\
+        , .{ doc.file_name, doc.file_name });
     }
 
     try w.writeAll(

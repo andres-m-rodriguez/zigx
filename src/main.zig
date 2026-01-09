@@ -9,12 +9,6 @@ pub fn main() !void {
     defer app.deinit(allocator);
     app.addZigxPages();
 
-    app.get("/", indexHandler);
-    app.get("/users", usersHandler);
-    app.post("/users", createUserHandler);
-    app.get("/error", errorHandler);
-    app.get("/users/id:int", usersByIdHandler);
-
     try app.listen();
 }
 

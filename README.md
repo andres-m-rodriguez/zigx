@@ -138,6 +138,84 @@ Pages can define additional API endpoints using the `routes()` function:
 }
 ```
 
+### Control Flow (Planned) - SSR section 
+
+Template loops for rendering lists with SSR:
+
+```zigx
+@route("/users")
+
+<h1>Users (@{users.len} total)</h1>
+
+<ul class="user-list">
+    @for(users) |user| {
+        <li class="user-card">
+            <img src="@{user.avatar}" alt="@{user.name}" />
+            <div class="user-info">
+                <h3>@{user.name}</h3>
+                <p>@{user.email}</p>
+                @if(user.is_admin) {
+                    <span class="badge">Admin</span>
+                }
+            </div>
+        </li>
+    }
+</ul>
+
+@if(users.len == 0) {
+    <p class="empty-state">No users found.</p>
+}
+
+@server{
+    const std = @import("std");
+
+    pub const User = struct {
+        id: usize,
+        name: []const u8,
+        email: []const u8,
+        avatar: []const u8,
+        is_admin: bool,
+    };
+
+    var users: []const User = &.{};
+
+    pub fn init(ctx: *const PageContext) !void {
+        // In real app, fetch from database
+        users = &.{
+            .{ .id = 1, .name = "Alice", .email = "alice@example.com", .avatar = "/avatars/1.png", .is_admin = true },
+            .{ .id = 2, .name = "Bob", .email = "bob@example.com", .avatar = "/avatars/2.png", .is_admin = false },
+            .{ .id = 3, .name = "Charlie", .email = "charlie@example.com", .avatar = "/avatars/3.png", .is_admin = false },
+        };
+        _ = ctx;
+    }
+}
+```
+
+This would generate HTML like:
+
+```html
+<h1>Users (3 total)</h1>
+
+<ul class="user-list">
+    <li class="user-card">
+        <img src="/avatars/1.png" alt="Alice" />
+        <div class="user-info">
+            <h3>Alice</h3>
+            <p>alice@example.com</p>
+            <span class="badge">Admin</span>
+        </div>
+    </li>
+    <li class="user-card">
+        <img src="/avatars/2.png" alt="Bob" />
+        <div class="user-info">
+            <h3>Bob</h3>
+            <p>bob@example.com</p>
+        </div>
+    </li>
+    <!-- ... -->
+</ul>
+```
+
 ## Features
 
 ### HTTP Server

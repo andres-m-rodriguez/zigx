@@ -90,14 +90,13 @@ fn writeWriterBasedHandler(w: *Writer, doc: zigxParser.ZigxDocument) !void {
     try w.writeAll(common.init_call_logic);
     try w.writeAll("\n\n");
 
-    // Create ArrayList for building HTML
+    // Create allocating writer for building HTML
     try w.writeAll(
-        \\    var html = std.ArrayList(u8){};
-        \\    defer html.deinit(ctx.allocator);
-        \\    const writer = html.writer(ctx.allocator);
+        \\    var h: std.Io.Writer.Allocating = .init(ctx.allocator);
+        \\    errdefer h.deinit();
         \\
         \\    // Write document header
-        \\    try writer.writeAll("<!DOCTYPE html><html><head><title>
+        \\    try h.writer.writeAll("<!DOCTYPE html><html><head><title>
     );
     try w.writeAll(doc.file_name);
     try w.writeAll(
@@ -115,9 +114,9 @@ fn writeWriterBasedHandler(w: *Writer, doc: zigxParser.ZigxDocument) !void {
     try w.writeAll(
         \\
         \\    // Write document footer
-        \\    try writer.writeAll("</body></html>");
+        \\    try h.writer.writeAll("</body></html>");
         \\
-        \\    return Response.html(try html.toOwnedSlice(ctx.allocator));
+        \\    return Response.html(try h.toOwnedSlice());
         \\}
         \\
     );
@@ -173,7 +172,7 @@ fn writeSimpleHandler(w: *Writer, doc: zigxParser.ZigxDocument) !void {
                             search_idx += 1;
                         }
                     }
-                    try w.writeAll("\" ++ zigxFmtSpec(@TypeOf(__zigx_val_");
+                    try w.writeAll("\" ++ html.fmtSpec(@TypeOf(__zigx_val_");
                     try w.print("{d}", .{found_idx});
                     try w.writeAll(")) ++ \"");
                 },
@@ -220,14 +219,14 @@ fn writeNodeCode(w: *Writer, node: Node, indent: usize) !void {
         .html => |text| {
             if (text.len > 0) {
                 try writeIndent(w, indent);
-                try w.writeAll("try writer.writeAll(\"");
+                try w.writeAll("try h.writer.writeAll(\"");
                 try writeEscapedForString(w, text);
                 try w.writeAll("\");\n");
             }
         },
         .expression => |expr| {
             try writeIndent(w, indent);
-            try w.writeAll("try std.fmt.format(writer, zigxFmtSpec(@TypeOf(");
+            try w.writeAll("try h.writer.print(html.fmtSpec(@TypeOf(");
             try w.writeAll(expr);
             try w.writeAll(")), .{");
             try w.writeAll(expr);

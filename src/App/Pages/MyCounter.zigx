@@ -1,28 +1,12 @@
-@route("/counter/initial:int")
+@route("/counter/")
 <h1>Counter</h1>
 <p>Value: @counter</p>
-<button>Increment</button>
+<button @onclick=increment>Increment</button>
 
-@server{
-    var counter: usize = 0;
+@client{
+    counter:usize = 0;
 
-    pub fn init(ctx: *const PageContext) !void {
-        if (ctx.getParam("initial")) |initial_str| {
-            counter = std.fmt.parseInt(usize, initial_str, 10) catch 0;
-        }
-    }
-
-    pub fn routes(allocator: std.mem.Allocator, app: *app_mod.App) void {
-        app.get(allocator, "/api/counter", getCounter);
-        app.post(allocator, "/api/counter/increment", incrementCounter);
-    }
-
-    fn getCounter(_: *RequestContext) !Response {
-        return Response.json("{\"count\": 0}");
-    }
-
-    fn incrementCounter(_: *RequestContext) !Response {
-        counter += 1;
-        return Response.json("{\"count\": 1}");
+    pub fn increment(){
+        counter+= 1;
     }
 }

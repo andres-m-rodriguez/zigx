@@ -55,20 +55,10 @@ pub fn writeIndent(w: *Writer, indent: usize) !void {
 pub const server_imports =
     \\const app_mod = @import("../../Framework/Http/Server/app.zig");
     \\const context_mod = @import("../../Framework/Http/Server/context.zig");
+    \\const html = @import("../../Framework/Compiler/Html/html.zig");
     \\const Response = app_mod.Response;
     \\const RequestContext = app_mod.RequestContext;
     \\const PageContext = context_mod.PageContext;
-    \\
-    \\
-    \\fn zigxFmtSpec(comptime T: type) []const u8 {
-    \\    return switch (@typeInfo(T)) {
-    \\        .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8) "{s}" else "{any}",
-    \\        .int, .comptime_int => "{d}",
-    \\        .float, .comptime_float => "{d}",
-    \\        .bool => "{}",
-    \\        else => "{any}",
-    \\    };
-    \\}
     \\
 ;
 

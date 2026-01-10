@@ -1,0 +1,28 @@
+{
+  "name": "zigx-runtime",
+  "version": "0.1.0",
+  "description": "A language-agnostic WASM-to-DOM runtime. Write your UI framework in any language that compiles to WASM.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "serve": "npx serve ."
+  },
+  "keywords": [
+    "wasm",
+    "webassembly",
+    "dom",
+    "ui",
+    "framework",
+    "runtime",
+    "zig",
+    "zigx"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "serve": "^14.2.0"
+  }
+}

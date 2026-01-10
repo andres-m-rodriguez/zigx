@@ -1,0 +1,40 @@
+@route("/user-list")
+
+<h1>User List</h1>
+<p>Total users: @{users.len}</p>
+
+<ul>
+@for(users) |user| {
+    <li>
+        <strong>@{user.name}</strong> - @{user.email}
+        @if(user.is_admin) {
+            <span style="color: red;">[Admin]</span>
+        }
+    </li>
+}
+</ul>
+
+@if(users.len == 0) {
+    <p>No users found.</p>
+}
+
+<a href="/">Back to Home</a>
+
+@server{    
+
+    pub const User = struct {
+        name: []const u8,
+        email: []const u8,
+        is_admin: bool,
+    };
+
+    pub var users: []const User = &.{};
+
+    pub fn init() !void {
+        users = &.{
+            .{ .name = "Alice", .email = "alice@example.com", .is_admin = true },
+            .{ .name = "Bob", .email = "bob@example.com", .is_admin = false },
+            .{ .name = "Charlie", .email = "charlie@example.com", .is_admin = false },
+        };
+    }
+}

@@ -18,8 +18,8 @@
 </script>
 
 @server{
-    pub fn routes(app: *app_mod.App) void {
-        app.get("/api/users", getUsers);
+    pub fn routes(allocator: std.mem.Allocator, app: *app_mod.App) void {
+        app.get(allocator, "/api/users", getUsers);
     }
 
     fn getUsers(_: *RequestContext) !Response {

@@ -49,12 +49,12 @@ pub const Node = struct {
     pub fn deinit(self: *Node, allocator: std.mem.Allocator) void {
         defer self.handlers.deinit(allocator);
         defer self.nodes.deinit(allocator);
-        var nodes_it = self.nodes.iterator();
+        var nodes_iterator = self.nodes.iterator();
         if (self.next_param_node) |next_param_node| {
             next_param_node.deinit(allocator);
             allocator.destroy(next_param_node);
         }
-        while (nodes_it.next()) |node| {
+        while (nodes_iterator.next()) |node| {
             allocator.free(node.key_ptr.*);
             node.value_ptr.deinit(allocator);
         }
@@ -148,9 +148,28 @@ pub const Router = struct {
         };
     }
 
+    fn getOrCreateRoot(self: *Router, allocator: std.mem.Allocator, root_segment: []const u8) !*Node {
+        if (self.routes.getPtr(root_segment)) |existing_node| {
+            return existing_node;
+        }
+
+        const root_segment_copy = try allocator.dupe(u8, root_segment);
+        errdefer allocator.free(root_segment_copy);
+
+        const new_node = try createNode(
+            allocator,
+            root_segment_copy,
+            ParamInformation.parse(root_segment),
+        );
+        defer allocator.destroy(new_node);
+
+        try self.routes.put(allocator, root_segment_copy, new_node.*);
+        return self.routes.getPtr(root_segment_copy).?;
+    }
+
     pub fn deinit(self: *Router, allocator: std.mem.Allocator) void {
-        var it = self.routes.iterator();
-        while (it.next()) |entry| {
+        var routes_iterator = self.routes.iterator();
+        while (routes_iterator.next()) |entry| {
             entry.value_ptr.deinit(allocator);
             allocator.free(entry.key_ptr.*);
         }
@@ -164,74 +183,56 @@ pub const Router = struct {
         path: []const u8,
         handler: Handler,
     ) !void {
-        var it = std.mem.splitScalar(u8, path, '/');
-        const root_seg = it.next() orelse return error.NoValidUrl;
+        var segments_iterator = std.mem.splitScalar(u8, path, '/');
+        const root_segment = segments_iterator.next() orelse return error.NoValidUrl;
+        var current_node = try self.getOrCreateRoot(allocator, root_segment);
 
-        var current: *Node = blk: {
-            if (self.routes.getPtr(root_seg)) |existing| {
-                break :blk existing;
-            }
-
-            const root_copy = try allocator.dupe(u8, root_seg);
-            errdefer allocator.free(root_copy);
-
-            const root = try createNode(
-                allocator,
-                root_copy,
-                ParamInformation.parse(root_seg),
-            );
-            defer allocator.destroy(root);
-
-            try self.routes.put(allocator, root_copy, root.*);
-            break :blk self.routes.getPtr(root_copy).?;
-        };
-
-        while (it.next()) |segment| {
-            const is_last = it.peek() == null;
+        while (segments_iterator.next()) |segment| {
+            const is_last_segment = segments_iterator.peek() == null;
             const param_info = ParamInformation.parse(segment);
 
             if (param_info) |param| {
-                if (current.next_param_node) |next| {
-                    current = next;
+                if (current_node.next_param_node) |next_node| {
+                    current_node = next_node;
                 } else {
-                    const node = try createNode(allocator, segment, param);
-                    current.next_param_node = node;
-                    current = node;
+                    const new_node = try createNode(allocator, segment, param);
+                    current_node.next_param_node = new_node;
+                    current_node = new_node;
                 }
             } else {
-                if (current.nodes.getPtr(segment)) |next| {
-                    current = next;
+                if (current_node.nodes.getPtr(segment)) |next_node| {
+                    current_node = next_node;
                 } else {
-                    const seg_copy = try allocator.dupe(u8, segment);
-                    errdefer allocator.free(seg_copy);
+                    const segment_copy = try allocator.dupe(u8, segment);
+                    errdefer allocator.free(segment_copy);
 
-                    const node = try createNode(allocator, seg_copy, null);
-                    defer allocator.destroy(node);
-                    try current.nodes.put(allocator, seg_copy, node.*);
-                    current = current.nodes.getPtr(seg_copy).?;
+                    const new_node = try createNode(allocator, segment_copy, null);
+                    defer allocator.destroy(new_node);
+                    try current_node.nodes.put(allocator, segment_copy, new_node.*);
+                    current_node = current_node.nodes.getPtr(segment_copy).?;
                 }
             }
 
-            if (is_last) {
-                try current.addHandler(allocator, method, handler);
+            if (is_last_segment) {
+                try current_node.addHandler(allocator, method, handler);
             }
         }
     }
 
     pub fn match(self: *Router, allocator: std.mem.Allocator, method: Method, path: []const u8) ?MatchResult {
-        var path_it = std.mem.splitScalar(u8, path, '/');
-        const parent_path = path_it.next() orelse return null;
-        var current_node = self.routes.get(parent_path) orelse return null;
+        var segments_iterator = std.mem.splitScalar(u8, path, '/');
+        const root_segment = segments_iterator.next() orelse return null;
+        var current_node = self.routes.get(root_segment) orelse return null;
 
         var params_list = std.ArrayListUnmanaged(Param){};
-        while (path_it.next()) |next_path| {
-            if (current_node.nodes.get(next_path)) |node| {
-                current_node = node;
+        while (segments_iterator.next()) |segment| {
+            if (current_node.nodes.get(segment)) |next_node| {
+                current_node = next_node;
             } else if (current_node.next_param_node) |param_node| {
-                if (param_node.param_information) |info| {
+                if (param_node.param_information) |param_info| {
                     params_list.append(allocator, .{
-                        .name = info.name,
-                        .value = next_path,
+                        .name = param_info.name,
+                        .value = segment,
                     }) catch return null;
                 }
                 current_node = param_node.*;
@@ -241,13 +242,13 @@ pub const Router = struct {
             }
         }
 
-        const handler = current_node.handlers.get(method) orelse {
+        const matched_handler = current_node.handlers.get(method) orelse {
             params_list.deinit(allocator);
             return null;
         };
 
         return MatchResult{
-            .handler = handler,
+            .handler = matched_handler,
             .params = .{ .items = params_list.toOwnedSlice(allocator) catch return null },
         };
     }

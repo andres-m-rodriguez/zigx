@@ -4,7 +4,6 @@
 <button>Increment</button>
 
 @server{
-    const std = @import("std");
     var counter: usize = 0;
 
     pub fn init(ctx: *const PageContext) !void {
@@ -13,9 +12,9 @@
         }
     }
 
-    pub fn routes(app: *app_mod.App) void {
-        app.get("/api/counter", getCounter);
-        app.post("/api/counter/increment", incrementCounter);
+    pub fn routes(allocator: std.mem.Allocator, app: *app_mod.App) void {
+        app.get(allocator, "/api/counter", getCounter);
+        app.post(allocator, "/api/counter/increment", incrementCounter);
     }
 
     fn getCounter(_: *RequestContext) !Response {

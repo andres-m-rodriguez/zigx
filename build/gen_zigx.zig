@@ -1,5 +1,5 @@
 const std = @import("std");
-const zigxCompiler = @import("zigxCompiler");
+const zigxParser = @import("zigxParser");
 
 // Import codegen modules
 const serverGen = @import("codegen/server.zig");
@@ -23,7 +23,6 @@ pub fn main() !void {
     // Get the base gen directory from output_path (e.g., "src/gen" from "src/gen/routes.zig")
     const gen_dir = std.fs.path.dirname(output_path) orelse "src/gen";
 
-    // Ensure directories exist
     std.fs.cwd().makePath(gen_dir) catch {};
 
     var server_dir_buf: [256]u8 = undefined;
@@ -35,10 +34,10 @@ pub fn main() !void {
     std.fs.cwd().makePath(client_dir) catch {};
 
     // Collect all .zigx files
-    var zigx_documents = std.ArrayList(zigxCompiler.ZigxDocument){};
+    var zigx_documents = std.ArrayList(zigxParser.ZigxDocument){};
     defer {
         for (zigx_documents.items) |*doc| {
-            doc.deinit();
+            doc.deinit(allocator);
         }
         zigx_documents.deinit(allocator);
     }
@@ -54,10 +53,10 @@ pub fn main() !void {
         defer file.close();
         var file_reading_buffer: [4096]u8 = undefined;
         var file_reader = file.reader(&file_reading_buffer);
-        // Extract just the filename without extension
+
         const basename = std.fs.path.basename(entry.path);
-        const name_without_ext = basename[0 .. basename.len - 5]; // remove ".zigx"
-        const zigx_document = try zigxCompiler.parse(allocator, &file_reader.interface, name_without_ext);
+        const name_without_ext = basename[0 .. basename.len - 5]; // removes ".zigx"
+        const zigx_document = try zigxParser.parse(allocator, &file_reader.interface, name_without_ext);
         try zigx_documents.append(allocator, zigx_document);
     }
 

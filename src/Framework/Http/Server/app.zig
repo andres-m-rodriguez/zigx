@@ -14,13 +14,11 @@ pub const Param = router.Param;
 pub const Method = router.Method;
 
 pub const App = struct {
-    allocator: std.mem.Allocator,
     port: u16,
     app_router: router.Router,
 
-    pub fn init(allocator: std.mem.Allocator, port: u16) !App {
+    pub fn init(port: u16) App {
         return App{
-            .allocator = allocator,
             .port = port,
             .app_router = router.Router.init(),
         };
@@ -30,34 +28,34 @@ pub const App = struct {
         self.app_router.deinit(allocator);
     }
 
-    pub fn get(self: *App, path: []const u8, handler: Handler) void {
-        self.app_router.addRoute(self.allocator, .GET, path, handler) catch {};
+    pub fn get(self: *App, allocator: std.mem.Allocator, path: []const u8, handler: Handler) void {
+        self.app_router.addRoute(allocator, .GET, path, handler) catch {};
     }
 
-    pub fn post(self: *App, path: []const u8, handler: Handler) void {
-        self.app_router.addRoute(self.allocator, .POST, path, handler) catch {};
+    pub fn post(self: *App, allocator: std.mem.Allocator, path: []const u8, handler: Handler) void {
+        self.app_router.addRoute(allocator, .POST, path, handler) catch {};
     }
 
-    pub fn put(self: *App, path: []const u8, handler: Handler) void {
-        self.app_router.addRoute(self.allocator, .PUT, path, handler) catch {};
+    pub fn put(self: *App, allocator: std.mem.Allocator, path: []const u8, handler: Handler) void {
+        self.app_router.addRoute(allocator, .PUT, path, handler) catch {};
     }
 
-    pub fn delete(self: *App, path: []const u8, handler: Handler) void {
-        self.app_router.addRoute(self.allocator, .DELETE, path, handler) catch {};
+    pub fn delete(self: *App, allocator: std.mem.Allocator, path: []const u8, handler: Handler) void {
+        self.app_router.addRoute(allocator, .DELETE, path, handler) catch {};
     }
 
-    pub fn patch(self: *App, path: []const u8, handler: Handler) void {
-        self.app_router.addRoute(self.allocator, .PATCH, path, handler) catch {};
+    pub fn patch(self: *App, allocator: std.mem.Allocator, path: []const u8, handler: Handler) void {
+        self.app_router.addRoute(allocator, .PATCH, path, handler) catch {};
     }
 
-    pub fn addZigxPages(self: *App) void {
-        routes.registerRoutes(self);
+    pub fn addZigxPages(self: *App, allocator: std.mem.Allocator) void {
+        routes.registerRoutes(allocator, self);
     }
 
-    pub fn listen(self: *App) !void {
+    pub fn listen(self: *App, allocator: std.mem.Allocator) !void {
         var http_server = try server.create(self.port, internalHandler, self);
         defer http_server.deinit();
-        try http_server.run(self.allocator);
+        try http_server.run(allocator);
     }
 
     fn internalHandler(ctx: *context.ServerContext) anyerror!void {

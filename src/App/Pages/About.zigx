@@ -4,8 +4,6 @@
 <a href="/">Back to Home</a>
 
 @server{
-    const std = @import("std");
-
     pub fn getTitle() []const u8 {
         return "About";
     }

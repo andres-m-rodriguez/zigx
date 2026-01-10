@@ -41,13 +41,19 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    // Create the zigxCompiler module first so it can be shared
+    // Create the zigxParser module first so it can be shared
     const zigx_compiler_mod = b.createModule(.{
-        .root_source_file = b.path("src/Framework/Compiler/zigxCompiler.zig"),
+        .root_source_file = b.path("src/Framework/Compiler/zigxParser.zig"),
         .target = b.graph.host,
     });
 
-    // Create codegen modules with zigxCompiler dependency
+    // Create the zig server parser module (for parsing zig code to find imports)
+    const zig_server_parser_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Compiler/server/parser.zig"),
+        .target = b.graph.host,
+    });
+
+    // Create codegen modules with zigxParser dependency
     const codegen_placeholders = b.createModule(.{
         .root_source_file = b.path("build/codegen/placeholders.zig"),
         .target = b.graph.host,
@@ -66,7 +72,8 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .imports = &.{
             .{ .name = "common", .module = codegen_common },
-            .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+            .{ .name = "zigxParser", .module = zigx_compiler_mod },
+            .{ .name = "zigServerParser", .module = zig_server_parser_mod },
         },
     });
 
@@ -75,7 +82,7 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .imports = &.{
             .{ .name = "common", .module = codegen_common },
-            .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+            .{ .name = "zigxParser", .module = zigx_compiler_mod },
         },
     });
 
@@ -84,7 +91,7 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .imports = &.{
             .{ .name = "common", .module = codegen_common },
-            .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+            .{ .name = "zigxParser", .module = zigx_compiler_mod },
         },
     });
 
@@ -94,7 +101,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("build/gen_zigx.zig"),
             .target = b.graph.host,
             .imports = &.{
-                .{ .name = "zigxCompiler", .module = zigx_compiler_mod },
+                .{ .name = "zigxParser", .module = zigx_compiler_mod },
                 .{ .name = "codegen/server.zig", .module = codegen_server },
                 .{ .name = "codegen/client.zig", .module = codegen_client },
                 .{ .name = "codegen/routes.zig", .module = codegen_routes },

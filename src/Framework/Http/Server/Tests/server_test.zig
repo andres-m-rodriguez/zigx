@@ -19,12 +19,12 @@ fn testHandler(ctx: *RequestContext) !Response {
 test "no memory leaks - App route registration" {
     const allocator = std.testing.allocator;
 
-    var app = try App.init(allocator, 0);
+    var app = App.init(0);
     defer app.deinit(allocator);
 
-    app.get("/", testHandler);
-    app.get("/error", testHandler);
-    app.post("/data", testHandler);
+    app.get(allocator, "/", testHandler);
+    app.get(allocator, "/error", testHandler);
+    app.post(allocator, "/data", testHandler);
 }
 
 test "no memory leaks - request parsing" {
@@ -77,10 +77,10 @@ test "no memory leaks - with GPA explicit check" {
     }
     const allocator = gpa.allocator();
 
-    var app = try App.init(allocator, 0);
-    app.get("/", testHandler);
-    app.get("/api", testHandler);
-    app.post("/data", testHandler);
+    var app = App.init(0);
+    app.get(allocator, "/", testHandler);
+    app.get(allocator, "/api", testHandler);
+    app.post(allocator, "/data", testHandler);
     app.deinit(allocator);
 
     for (0..10) |_| {

@@ -1,0 +1,27 @@
+{
+  "name": "zigx-lang",
+  "displayName": "Zigx Language",
+  "description": "Syntax highlighting for .zigx files",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "zigx",
+        "aliases": ["Zigx", "zigx"],
+        "extensions": [".zigx"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "zigx",
+        "scopeName": "source.zigx",
+        "path": "./syntaxes/zigx.tmLanguage.json"
+      }
+    ]
+  }
+}

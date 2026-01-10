@@ -9,32 +9,42 @@ pub const TokenKind = enum {
     Expression, // @identifier
     ExpressionBlock, // @{...}
     RouteDirective, // @route("...")
+    ForBlock, // @for(collection) |capture| { body }
+    IfBlock, // @if(condition) { body } optionally with else
+    WhileBlock, // @while(condition) |capture| { body }
     Eof,
+};
+
+/// Data for control flow tokens (@for, @if, @while)
+pub const ControlFlowData = struct {
+    param: []const u8, // collection for @for, condition for @if/@while
+    capture: ?[]const u8, // |var| capture for @for/@while, null for @if
+    body: []const u8, // content inside { }
+    else_body: ?[]const u8, // else branch for @if, null otherwise
 };
 
 pub const Token = struct {
     kind: TokenKind,
     lexeme: []const u8,
+    control_flow: ?ControlFlowData = null,
 };
 
 pub const Lexer = struct {
     reader: *std.Io.Reader,
-    allocator: std.mem.Allocator,
     token_buf: std.ArrayList(u8),
 
-    pub fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) Lexer {
+    pub fn init(reader: *std.Io.Reader) Lexer {
         return .{
             .reader = reader,
-            .allocator = allocator,
             .token_buf = std.ArrayList(u8){},
         };
     }
 
-    pub fn deinit(self: *Lexer) void {
-        self.token_buf.deinit(self.allocator);
+    pub fn deinit(self: *Lexer, allocator: std.mem.Allocator) void {
+        self.token_buf.deinit(allocator);
     }
 
-    pub fn next(self: *Lexer) !Token {
+    pub fn next(self: *Lexer, allocator: std.mem.Allocator) !Token {
         self.token_buf.clearRetainingCapacity();
 
         const first_byte = self.reader.takeByte() catch |err| switch (err) {
@@ -43,19 +53,19 @@ pub const Lexer = struct {
         };
 
         if (first_byte == '@') {
-            return try self.lexAtSign();
+            return try self.lexAtSign(allocator);
         }
 
-        try self.token_buf.append(self.allocator, first_byte);
-        return try self.lexHtmlText();
+        try self.token_buf.append(allocator, first_byte);
+        return try self.lexHtmlText(allocator);
     }
 
-    fn lexAtSign(self: *Lexer) !Token {
+    fn lexAtSign(self: *Lexer, allocator: std.mem.Allocator) !Token {
         // Peek at next character to determine what kind of @ token
         const next_byte = self.reader.peekByte() catch |err| switch (err) {
             error.EndOfStream => {
                 // Just a lone @ at end of file, which should be just html??? maybe???
-                try self.token_buf.append(self.allocator, '@');
+                try self.token_buf.append(allocator, '@');
                 return Token{ .kind = .HtmlText, .lexeme = self.token_buf.items };
             },
             else => return err,
@@ -64,20 +74,20 @@ pub const Lexer = struct {
         if (next_byte == '{') {
             // @{...} expression block
             _ = try self.reader.takeByte(); // consume '{'
-            return try self.lexBraceBlock(.ExpressionBlock);
+            return try self.lexBraceBlock(allocator, .ExpressionBlock);
         }
 
         if (isIdentifierStart(next_byte)) {
             // Could be @server{, @client{, or @identifier
-            return try self.lexAtIdentifier();
+            return try self.lexAtIdentifier(allocator);
         }
 
         // Not a valid @ sequence, treat '@' as HTML text
-        try self.token_buf.append(self.allocator, '@');
-        return try self.lexHtmlText();
+        try self.token_buf.append(allocator, '@');
+        return try self.lexHtmlText(allocator);
     }
 
-    fn lexAtIdentifier(self: *Lexer) !Token {
+    fn lexAtIdentifier(self: *Lexer, allocator: std.mem.Allocator) !Token {
         // Read identifier chars (a-z, A-Z, 0-9, _) until we hit a non-identifier char
         // This builds up the identifier name after '@' (e.g., "server", "client", "myVar")
         while (true) {
@@ -87,7 +97,7 @@ pub const Lexer = struct {
             };
 
             if (isIdentifierChar(byte)) {
-                try self.token_buf.append(self.allocator, byte);
+                try self.token_buf.append(allocator, byte);
                 _ = try self.reader.takeByte();
             } else {
                 break;
@@ -110,28 +120,39 @@ pub const Lexer = struct {
 
             if (std.mem.eql(u8, identifier, "server")) {
                 self.token_buf.clearRetainingCapacity();
-                return try self.lexBraceBlock(.ServerBlock);
+                return try self.lexBraceBlock(allocator, .ServerBlock);
             } else if (std.mem.eql(u8, identifier, "client")) {
                 self.token_buf.clearRetainingCapacity();
-                return try self.lexBraceBlock(.ClientBlock);
+                return try self.lexBraceBlock(allocator, .ClientBlock);
             } else {
                 // Unknown @identifier{ - treat the content as expression block
                 self.token_buf.clearRetainingCapacity();
-                return try self.lexBraceBlock(.ExpressionBlock);
+                return try self.lexBraceBlock(allocator, .ExpressionBlock);
             }
         }
 
         // Check for @route("...")
         if (std.mem.eql(u8, identifier, "route") and next_byte == '(') {
             _ = try self.reader.takeByte(); // consume '('
-            return try self.lexRouteDirective();
+            return try self.lexRouteDirective(allocator);
+        }
+
+        // Check for control flow: @for(...), @if(...), @while(...)
+        if (next_byte == '(') {
+            if (std.mem.eql(u8, identifier, "for")) {
+                return try self.lexForBlock(allocator);
+            } else if (std.mem.eql(u8, identifier, "if")) {
+                return try self.lexIfBlock(allocator);
+            } else if (std.mem.eql(u8, identifier, "while")) {
+                return try self.lexWhileBlock(allocator);
+            }
         }
 
         // Just an expression like @myVariable
         return Token{ .kind = .Expression, .lexeme = identifier };
     }
 
-    fn lexRouteDirective(self: *Lexer) !Token {
+    fn lexRouteDirective(self: *Lexer, allocator: std.mem.Allocator) !Token {
         self.token_buf.clearRetainingCapacity();
 
         // Skip whitespace and find opening quote
@@ -155,7 +176,7 @@ pub const Lexer = struct {
                 else => return err,
             };
             if (byte == '"') break;
-            try self.token_buf.append(self.allocator, byte);
+            try self.token_buf.append(allocator, byte);
         }
 
         // Skip to closing paren
@@ -170,7 +191,7 @@ pub const Lexer = struct {
         return Token{ .kind = .RouteDirective, .lexeme = self.token_buf.items };
     }
 
-    fn lexBraceBlock(self: *Lexer, kind: TokenKind) !Token {
+    fn lexBraceBlock(self: *Lexer, allocator: std.mem.Allocator, kind: TokenKind) !Token {
         var brace_depth: usize = 1;
 
         while (brace_depth > 0) { // Praying that I don't get this wrong...I always get brace depth wrong...
@@ -184,22 +205,22 @@ pub const Lexer = struct {
 
             if (byte == '{') {
                 brace_depth += 1;
-                try self.token_buf.append(self.allocator, byte);
+                try self.token_buf.append(allocator, byte);
             } else if (byte == '}') {
                 brace_depth -= 1;
                 if (brace_depth > 0) {
-                    try self.token_buf.append(self.allocator, byte);
+                    try self.token_buf.append(allocator, byte);
                 }
                 // Don't append the final closing brace
             } else {
-                try self.token_buf.append(self.allocator, byte);
+                try self.token_buf.append(allocator, byte);
             }
         }
 
         return Token{ .kind = kind, .lexeme = self.token_buf.items };
     }
 
-    fn lexHtmlText(self: *Lexer) !Token {
+    fn lexHtmlText(self: *Lexer, allocator: std.mem.Allocator) !Token {
         while (true) {
             const byte = self.reader.peekByte() catch |err| switch (err) {
                 error.EndOfStream => break,
@@ -211,11 +232,237 @@ pub const Lexer = struct {
                 break;
             }
 
-            try self.token_buf.append(self.allocator, byte);
+            try self.token_buf.append(allocator, byte);
             _ = try self.reader.takeByte();
         }
 
         return Token{ .kind = .HtmlText, .lexeme = self.token_buf.items };
+    }
+
+    /// Lexes @for(collection) |capture| { body }
+    fn lexForBlock(self: *Lexer, allocator: std.mem.Allocator) !Token {
+        // We've already read "@for", now expect (collection) |capture| { body }
+        _ = try self.reader.takeByte();
+
+        // Read collection expression until ')'
+        const param = try self.readParenContent(allocator);
+
+        // Skip whitespace
+        try self.skipWhitespace();
+
+        // Expect |capture|
+        const capture = try self.readPipeCapture(allocator);
+
+        // Skip whitespace
+        try self.skipWhitespace();
+
+        // Expect { body }
+        const byte = self.reader.peekByte() catch return error.UnexpectedEof;
+        if (byte != '{') return error.ExpectedOpenBrace;
+        _ = try self.reader.takeByte(); // consume '{'
+
+        const body = try self.readBraceContent(allocator);
+
+        return Token{
+            .kind = .ForBlock,
+            .lexeme = "",
+            .control_flow = .{
+                .param = param,
+                .capture = capture,
+                .body = body,
+                .else_body = null,
+            },
+        };
+    }
+
+    /// Lexes @if(condition) { body } with optional @else { else_body }
+    fn lexIfBlock(self: *Lexer, allocator: std.mem.Allocator) !Token {
+        _ = try self.reader.takeByte(); // consume '('
+
+        // Read condition until ')'
+        const condition = try self.readParenContent(allocator);
+
+        // Skip whitespace
+        try self.skipWhitespace();
+
+        // Expect { body }
+        const byte = self.reader.peekByte() catch return error.UnexpectedEof;
+        if (byte != '{') return error.ExpectedOpenBrace;
+        _ = try self.reader.takeByte(); // consume '{'
+
+        const body = try self.readBraceContent(allocator);
+
+        // Check for @else
+        try self.skipWhitespace();
+        const else_body = try self.tryReadElseBlock(allocator);
+
+        return Token{
+            .kind = .IfBlock,
+            .lexeme = "",
+            .control_flow = .{
+                .param = condition,
+                .capture = null,
+                .body = body,
+                .else_body = else_body,
+            },
+        };
+    }
+
+    /// Lexes @while(condition) |capture| { body } - capture is optional
+    fn lexWhileBlock(self: *Lexer, allocator: std.mem.Allocator) !Token {
+        _ = try self.reader.takeByte(); // consume '('
+
+        // Read condition until ')'
+        const condition = try self.readParenContent(allocator);
+
+        // Skip whitespace
+        try self.skipWhitespace();
+
+        // Check for optional |capture|
+        var capture: ?[]const u8 = null;
+        const peek = self.reader.peekByte() catch null;
+        if (peek == '|') {
+            capture = try self.readPipeCapture(allocator);
+            try self.skipWhitespace();
+        }
+
+        // Expect { body }
+        const byte = self.reader.peekByte() catch return error.UnexpectedEof;
+        if (byte != '{') return error.ExpectedOpenBrace;
+        _ = try self.reader.takeByte(); // consume '{'
+
+        const body = try self.readBraceContent(allocator);
+
+        return Token{
+            .kind = .WhileBlock,
+            .lexeme = "",
+            .control_flow = .{
+                .param = condition,
+                .capture = capture,
+                .body = body,
+                .else_body = null,
+            },
+        };
+    }
+
+    // ============================================
+    // Helper functions for control flow lexing
+    // ============================================
+
+    fn skipWhitespace(self: *Lexer) !void {
+        while (true) {
+            const byte = self.reader.peekByte() catch return;
+            if (byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r') {
+                _ = try self.reader.takeByte();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Reads content inside () with proper nesting, allocates and returns owned slice
+    fn readParenContent(self: *Lexer, allocator: std.mem.Allocator) ![]const u8 {
+        var buf = std.ArrayList(u8){};
+        errdefer buf.deinit(allocator);
+
+        var depth: usize = 1;
+        while (depth > 0) {
+            const byte = self.reader.takeByte() catch return error.UnexpectedEof;
+            if (byte == '(') {
+                depth += 1;
+                try buf.append(allocator, byte);
+            } else if (byte == ')') {
+                depth -= 1;
+                if (depth > 0) {
+                    try buf.append(allocator, byte);
+                }
+            } else {
+                try buf.append(allocator, byte);
+            }
+        }
+        return try buf.toOwnedSlice(allocator);
+    }
+
+    /// Reads |capture| and returns the capture name (allocates)
+    fn readPipeCapture(self: *Lexer, allocator: std.mem.Allocator) ![]const u8 {
+        const first = self.reader.peekByte() catch return error.UnexpectedEof;
+        if (first != '|') return error.ExpectedPipe;
+        _ = try self.reader.takeByte(); // consume '|'
+
+        var buf = std.ArrayList(u8){};
+        errdefer buf.deinit(allocator);
+
+        while (true) {
+            const byte = self.reader.takeByte() catch return error.UnexpectedEof;
+            if (byte == '|') break;
+            try buf.append(allocator, byte);
+        }
+        return try buf.toOwnedSlice(allocator);
+    }
+
+    /// Reads content inside {} with proper nesting, allocates and returns owned slice
+    fn readBraceContent(self: *Lexer, allocator: std.mem.Allocator) ![]const u8 {
+        var buf = std.ArrayList(u8){};
+        errdefer buf.deinit(allocator);
+
+        var depth: usize = 1;
+        while (depth > 0) {
+            const byte = self.reader.takeByte() catch return error.UnexpectedEof;
+            if (byte == '{') {
+                depth += 1;
+                try buf.append(allocator, byte);
+            } else if (byte == '}') {
+                depth -= 1;
+                if (depth > 0) {
+                    try buf.append(allocator, byte);
+                }
+            } else {
+                try buf.append(allocator, byte);
+            }
+        }
+        return try buf.toOwnedSlice(allocator);
+    }
+
+    /// Tries to read @else { body }, returns null if not present
+    fn tryReadElseBlock(self: *Lexer, allocator: std.mem.Allocator) !?[]const u8 {
+        // Check if next is '@else'
+        const first = self.reader.peekByte() catch return null;
+        if (first != '@') return null;
+
+        // Save position - we need to peek ahead for "else"
+        // Read and check
+        _ = try self.reader.takeByte(); // consume '@'
+
+        // Read identifier
+        var ident_buf = std.ArrayList(u8){};
+        defer ident_buf.deinit(allocator);
+
+        while (true) {
+            const byte = self.reader.peekByte() catch break;
+            if (isIdentifierChar(byte)) {
+                try ident_buf.append(allocator, byte);
+                _ = try self.reader.takeByte();
+            } else {
+                break;
+            }
+        }
+
+        if (!std.mem.eql(u8, ident_buf.items, "else")) {
+            // Not @else - this is a problem, we consumed the '@'
+            // For now, return error. In a more robust implementation,
+            // we'd need backtracking or lookahead.
+            return error.UnexpectedToken;
+        }
+
+        // Skip whitespace after @else
+        try self.skipWhitespace();
+
+        // Expect {
+        const brace = self.reader.peekByte() catch return error.UnexpectedEof;
+        if (brace != '{') return error.ExpectedOpenBrace;
+        _ = try self.reader.takeByte();
+
+        return try self.readBraceContent(allocator);
     }
 
     fn isIdentifierStart(c: u8) bool {

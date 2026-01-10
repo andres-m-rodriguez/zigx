@@ -1,10 +1,10 @@
 const std = @import("std");
 const common = @import("common");
-const zigxCompiler = @import("zigxCompiler");
+const zigxParser = @import("zigxParser");
 
 const Writer = common.Writer;
 
-pub fn generate(allocator: std.mem.Allocator, client_dir: []const u8, doc: zigxCompiler.ZigxDocument) !void {
+pub fn generate(allocator: std.mem.Allocator, client_dir: []const u8, doc: zigxParser.ZigxDocument) !void {
     // Only generate client file if there's client code
     if (doc.client_code.len == 0) return;
 

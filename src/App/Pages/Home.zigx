@@ -13,7 +13,6 @@
  <a href="/counter/0">Counter</a>
 
 @server{
-    const std = @import("std");
     var user_name: []const u8 = undefined;
     pub fn init() !void {
         user_name = "Andres";

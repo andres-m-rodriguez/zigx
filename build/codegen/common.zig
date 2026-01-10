@@ -71,6 +71,9 @@ pub const server_imports =
     \\}
     \\
 ;
+
+// Additional import needed when using writer-based output (control flow)
+pub const std_import = "const std = @import(\"std\");\n";
 //Just placeholder for now but someday!
 pub const client_imports =
     \\// This file is intended to be compiled to WebAssembly

@@ -5,11 +5,11 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var app = try zigx.App.init(allocator, 42069);
+    var app = zigx.App.init(42069);
     defer app.deinit(allocator);
-    app.addZigxPages();
+    app.addZigxPages(allocator);
 
-    try app.listen();
+    try app.listen(allocator);
 }
 
 fn indexHandler(ctx: *zigx.RequestContext) !zigx.Response {

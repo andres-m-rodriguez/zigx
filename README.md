@@ -1,12 +1,24 @@
 # Zigx
 
-> **Warning**: This is an experimental toy project. Do not use in production.....like at all!
+> **Note**: This is a completed learning project. Not intended for production use.
 
-Zigx is a proof-of-concept full-stack web framework written in Zig. It explores the idea of single-file `.zigx` components that compile to server-side Zig code with plans for client-side WebAssembly.
+Zigx is a proof-of-concept full-stack web framework written in Zig. It explores the idea of single-file `.zigx` components that compile to both server-side Zig code and client-side WebAssembly.
 
 ## Status
 
-**Experimental** - This project exists for learning and exploration. Expect breaking changes, incomplete features, and rough edges.
+**Completed (Learning Project)** - This project has reached its goal as a learning exercise. Development is not actively continuing, but the codebase serves as a reference implementation for the concepts explored.
+
+### What Was Learned
+
+This project was built to explore and understand:
+
+- **Zig comptime metaprogramming** - Heavy use of compile-time code generation
+- **Custom DSL design** - Creating a `.zigx` single-file component format with its own syntax
+- **Compiler construction** - Building a lexer, parser, and AST for template processing
+- **Full-stack WASM architecture** - Server renders HTML, client runs Zig compiled to WebAssembly
+- **Virtual DOM concepts** - RenderTree structure with diffing algorithm
+- **HTTP server internals** - Multi-threaded connection handling, trie-based routing
+- **Zig↔JavaScript interop** - Memory bridging between WASM and the DOM
 
 ## Quick Start
 
@@ -366,13 +378,13 @@ Zigx/
     └── server/               # Generated handlers
 ```
 
-## Current State
+## Implementation Status
 
-**What's working:**
+**Completed:**
 
 - HTTP/1.1 server with multi-threaded connection handling
-- Trie-based router with typed parameters
-- `.zigx` file parsing and lexing
+- Trie-based router with typed parameters (`:int`, `:str`, `:guid`)
+- `.zigx` file parsing and lexing (custom DSL)
 - Server-side code generation from `.zigx` files
 - Expression interpolation with comptime type detection
 - JSON and HTML response builders
@@ -382,20 +394,20 @@ Zigx/
 - Event handlers (`@onclick`, `@onchange`, `@onsubmit`)
 - Conditional rendering (`@if`)
 - RenderTree-based DOM diffing
-- JavaScript runtime for WASM↔DOM communication
+- TypeScript/JavaScript runtime for WASM↔DOM communication
 
-**What's not built yet:**
+**Not implemented (out of scope for learning goals):**
 
 - Reactive data binding (`@bind`)
-- Template loops (`@for`)
+- Template loops (`@for` codegen)
 - Full client-server hydration
 
-## Goals
+## Goals (Achieved)
 
-1. Learn Zig deeply through a non-trivial project
-2. Explore comptime capabilities for code generation
-3. Experiment with Zig's WASM compilation target
-4. Build something fun
+1. ~~Learn Zig deeply through a non-trivial project~~
+2. ~~Explore comptime capabilities for code generation~~
+3. ~~Experiment with Zig's WASM compilation target~~
+4. ~~Build something fun that made me question life : )~~
 
 ## Non-Goals
 
@@ -404,6 +416,7 @@ Zigx/
 - Comprehensive HTTP compliance
 - Competing with established frameworks
 
+Thank you for viewing this project! it was really fun to create but it was never meant to be something more than what it is right now
 ## License
 
 MIT

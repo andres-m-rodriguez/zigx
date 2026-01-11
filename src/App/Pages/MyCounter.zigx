@@ -13,12 +13,19 @@
     var show_something = true;
     pub fn increment() void {
         counter += 1;
-        if(counter > 10){
-            show_something = false;
-        }
+        updateShowSomething();
     }
     pub fn decrement() void {
         counter -= 1;
+        updateShowSomething();
+    }
+    pub fn updateShowSomething() void {
+        if(counter > 10){
+            show_something = false;
+        }
+        else{
+            show_something = true;
+        }
     }
 
   }

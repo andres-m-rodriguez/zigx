@@ -50,6 +50,24 @@ export interface ZigxHostImports {
   clear_timeout(timer_id: number): void;
   set_interval(component_id: number, handler_id: number, interval_ms: number): number;
   clear_interval(timer_id: number): void;
+
+  // DOM traversal (migrated from JS runtime)
+  get_first_child(node_id: number): number;
+  get_next_sibling(node_id: number): number;
+  get_parent_node(node_id: number): number;
+  get_tag_name(element_id: number, buf_ptr: number, buf_len: number): number;
+
+  // Text content by ID (migrated from JS runtime)
+  set_text_content_by_id(id_ptr: number, id_len: number, text_ptr: number, text_len: number): void;
+  set_text_content_int(id_ptr: number, id_len: number, value: number): void;
+
+  // innerHTML (migrated from JS runtime)
+  set_inner_html(element_id: number, html_ptr: number, html_len: number): void;
+
+  // Element operations (migrated from JS runtime)
+  remove_element(element_id: number): void;
+  get_element_by_id(id_ptr: number, id_len: number): number;
+  query_selector(selector_ptr: number, selector_len: number): number;
 }
 
 export const EventType = {

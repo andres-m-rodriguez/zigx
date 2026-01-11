@@ -69,7 +69,50 @@ export class ZigxRuntime {
     this.memory = this.wasmExports.memory;
     this.wasmExports.zigx_init();
 
+    // Bind data-attribute events after initialization
+    this.bindEvents();
+
     if (this.debug) console.log('[Zigx] Runtime started');
+  }
+
+  // Call a WASM export by function name (migrated from JS runtime)
+  call(fnName: string, ...args: unknown[]): unknown {
+    const exportName = `_zigx_${fnName}`;
+    if (this.wasmExports && (this.wasmExports as any)[exportName]) {
+      return (this.wasmExports as any)[exportName](...args);
+    }
+    console.warn(`[Zigx] Function not found: ${exportName}`);
+    return undefined;
+  }
+
+  // Call a WASM handler by ID (migrated from JS runtime)
+  callHandler(handlerId: number, ...args: unknown[]): unknown {
+    const exportName = `_zigx_handler_${handlerId}`;
+    if (this.wasmExports && (this.wasmExports as any)[exportName]) {
+      return (this.wasmExports as any)[exportName](...args);
+    }
+    console.warn(`[Zigx] Handler not found: ${exportName}`);
+    return undefined;
+  }
+
+  // Read string from WASM memory (exposed for external use)
+  readStringPublic(ptr: number, len: number): string {
+    return this.readString(ptr, len);
+  }
+
+  // Write string to WASM memory (exposed for external use)
+  writeStringPublic(ptr: number, str: string): number {
+    return this.writeString(ptr, str);
+  }
+
+  // Get the WASM exports object
+  getExports(): ZigxWasmExports | null {
+    return this.wasmExports;
+  }
+
+  // Get the memory object
+  getMemory(): WebAssembly.Memory | null {
+    return this.memory;
   }
 
   private log(...args: unknown[]) {
@@ -180,6 +223,113 @@ export class ZigxRuntime {
     if (this.wasmExports) {
       this.wasmExports.zigx_init();
     }
+  }
+
+  // Data-attribute event binding (migrated from JS runtime)
+  bindEvents(): void {
+    if (!this.wasmExports) return;
+
+    // Bind onclick events
+    document.querySelectorAll('[data-zigx-onclick]').forEach(el => {
+      const fnName = (el as HTMLElement).dataset.zigxOnclick;
+      if (!fnName) return;
+      const exportName = `_zigx_${fnName}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          exportFn();
+        });
+      }
+    });
+
+    // Bind onchange events
+    document.querySelectorAll('[data-zigx-onchange]').forEach(el => {
+      const fnName = (el as HTMLElement).dataset.zigxOnchange;
+      if (!fnName) return;
+      const exportName = `_zigx_${fnName}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('change', () => {
+          exportFn();
+        });
+      }
+    });
+
+    // Bind onsubmit events
+    document.querySelectorAll('[data-zigx-onsubmit]').forEach(el => {
+      const fnName = (el as HTMLElement).dataset.zigxOnsubmit;
+      if (!fnName) return;
+      const exportName = `_zigx_${fnName}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('submit', (e) => {
+          e.preventDefault();
+          exportFn();
+        });
+      }
+    });
+
+    // Bind click handler by ID
+    document.querySelectorAll('[data-zigx-click]').forEach(el => {
+      const handlerId = parseInt((el as HTMLElement).dataset.zigxClick || '', 10);
+      if (isNaN(handlerId)) return;
+      const exportName = `_zigx_handler_${handlerId}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          exportFn();
+        });
+      }
+    });
+
+    // Bind change handler by ID
+    document.querySelectorAll('[data-zigx-change]').forEach(el => {
+      const handlerId = parseInt((el as HTMLElement).dataset.zigxChange || '', 10);
+      if (isNaN(handlerId)) return;
+      const exportName = `_zigx_handler_${handlerId}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('change', () => {
+          exportFn();
+        });
+      }
+    });
+
+    // Bind submit handler by ID
+    document.querySelectorAll('[data-zigx-submit]').forEach(el => {
+      const handlerId = parseInt((el as HTMLElement).dataset.zigxSubmit || '', 10);
+      if (isNaN(handlerId)) return;
+      const exportName = `_zigx_handler_${handlerId}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('submit', (e) => {
+          e.preventDefault();
+          exportFn();
+        });
+      }
+    });
+
+    // Bind oninput events
+    document.querySelectorAll('[data-zigx-oninput]').forEach(el => {
+      const fnName = (el as HTMLElement).dataset.zigxOninput;
+      if (!fnName) return;
+      const exportName = `_zigx_${fnName}`;
+      const exportFn = (this.wasmExports as any)[exportName];
+
+      if (exportFn) {
+        el.addEventListener('input', () => {
+          exportFn();
+        });
+      }
+    });
   }
 
   private buildEventPayload(event: Event): string {
@@ -541,6 +691,109 @@ export class ZigxRuntime {
             self.timers.delete(timer_id);
           }
         },
+
+        // DOM traversal functions (migrated from JS runtime)
+        get_first_child(node_id: number): number {
+          const node = self.getNode(node_id);
+          if (node && node.firstChild) {
+            return self.registerNode(node.firstChild);
+          }
+          return 0;
+        },
+
+        get_next_sibling(node_id: number): number {
+          const node = self.getNode(node_id);
+          if (node && node.nextSibling) {
+            return self.registerNode(node.nextSibling);
+          }
+          return 0;
+        },
+
+        get_parent_node(node_id: number): number {
+          const node = self.getNode(node_id);
+          if (node && node.parentNode) {
+            return self.registerNode(node.parentNode);
+          }
+          return 0;
+        },
+
+        get_tag_name(element_id: number, buf_ptr: number, buf_len: number): number {
+          const element = self.getNode(element_id) as HTMLElement;
+          if (element && element.tagName) {
+            const tagName = element.tagName.toLowerCase();
+            const bytes = self.encoder.encode(tagName);
+            const len = Math.min(bytes.length, buf_len);
+
+            if (!self.memory) return 0;
+            const view = new Uint8Array(self.memory.buffer, buf_ptr, len);
+            view.set(bytes.slice(0, len));
+
+            return len;
+          }
+          return 0;
+        },
+
+        // Text content functions by ID (migrated from JS runtime)
+        set_text_content_by_id(id_ptr: number, id_len: number, text_ptr: number, text_len: number): void {
+          const id = self.readString(id_ptr, id_len);
+          const text = self.readString(text_ptr, text_len);
+          const element = document.getElementById(id);
+          if (element) {
+            element.textContent = text;
+          } else {
+            console.warn(`[Zigx] Element not found: ${id}`);
+          }
+        },
+
+        set_text_content_int(id_ptr: number, id_len: number, value: number): void {
+          const id = self.readString(id_ptr, id_len);
+          const element = document.getElementById(id);
+          if (element) {
+            element.textContent = String(value);
+          } else {
+            console.warn(`[Zigx] Element not found: ${id}`);
+          }
+        },
+
+        // innerHTML (migrated from JS runtime)
+        set_inner_html(element_id: number, html_ptr: number, html_len: number): void {
+          const element = self.getNode(element_id) as HTMLElement;
+          const html = self.readString(html_ptr, html_len);
+
+          if (element && element instanceof HTMLElement) {
+            element.innerHTML = html;
+            self.bindEvents();
+          }
+        },
+
+        // Element removal
+        remove_element(element_id: number): void {
+          const element = self.getNode(element_id);
+          if (element && element.parentNode) {
+            element.parentNode.removeChild(element);
+          }
+          self.removeNode(element_id);
+        },
+
+        // Get element by ID and return its node ID
+        get_element_by_id(id_ptr: number, id_len: number): number {
+          const id = self.readString(id_ptr, id_len);
+          const element = document.getElementById(id);
+          if (element) {
+            return self.registerNode(element);
+          }
+          return 0;
+        },
+
+        // Query selector
+        query_selector(selector_ptr: number, selector_len: number): number {
+          const selector = self.readString(selector_ptr, selector_len);
+          const element = document.querySelector(selector);
+          if (element) {
+            return self.registerNode(element);
+          }
+          return 0;
+        },
       },
     };
   }
@@ -578,4 +831,57 @@ export async function createZigxApp(config: ZigxConfig): Promise<ZigxRuntime> {
   const runtime = new ZigxRuntime(config);
   await runtime.start();
   return runtime;
+}
+
+// Auto-initialization from script tag (migrated from JS runtime)
+// Usage: <script src="zigx-runtime.js" data-zigx-wasm="app.wasm" data-zigx-root="#app"></script>
+export function autoInit(): void {
+  if (typeof document === 'undefined') return;
+
+  document.addEventListener('DOMContentLoaded', async () => {
+    const script = document.querySelector('script[data-zigx-wasm]') as HTMLScriptElement | null;
+    if (script) {
+      const wasmPath = script.dataset.zigxWasm;
+      const rootSelector = script.dataset.zigxRoot || '#zigx-root';
+
+      if (!wasmPath) {
+        console.error('[Zigx] data-zigx-wasm attribute is required');
+        return;
+      }
+
+      const rootElement = document.querySelector(rootSelector) as HTMLElement | null;
+      if (!rootElement) {
+        console.error(`[Zigx] Root element not found: ${rootSelector}`);
+        return;
+      }
+
+      try {
+        const runtime = await createZigxApp({
+          root: rootElement,
+          wasmUrl: wasmPath,
+          debug: script.dataset.zigxDebug === 'true',
+        });
+
+        // Expose globally for compatibility with JS runtime
+        (window as any).ZigxRuntime = runtime;
+        console.log('[Zigx] Auto-initialized successfully');
+      } catch (error) {
+        console.error('[Zigx] Failed to auto-initialize:', error);
+      }
+    }
+  });
+}
+
+// Global window export for browser environments
+declare global {
+  interface Window {
+    ZigxRuntime: ZigxRuntime | undefined;
+    createZigxApp: typeof createZigxApp;
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.createZigxApp = createZigxApp;
+  // Auto-initialize if script tag has data-zigx-wasm attribute
+  autoInit();
 }

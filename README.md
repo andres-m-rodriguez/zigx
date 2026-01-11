@@ -138,7 +138,67 @@ Pages can define additional API endpoints using the `routes()` function:
 }
 ```
 
-### Control Flow (Planned) - SSR section 
+### Client-Side Interactivity
+
+Zigx compiles `@client{}` blocks to WebAssembly for client-side interactivity. Use event handlers to bind Zig functions to DOM events:
+
+```zigx
+@route("/counter")
+
+<h1>Counter</h1>
+<p>Value: @counter</p>
+<button @onclick=increment>Increment</button>
+<button @onclick=decrement>Decrement</button>
+
+@if(show_message) {
+    <p>Counter is active!</p>
+}
+
+@client{
+    var counter: usize = 0;
+    var show_message = true;
+
+    pub fn increment() void {
+        counter += 1;
+        if (counter > 10) {
+            show_message = false;
+        }
+    }
+
+    pub fn decrement() void {
+        if (counter > 0) {
+            counter -= 1;
+        }
+    }
+}
+
+@server{
+    var counter: usize = 0;
+    var show_message = true;
+}
+```
+
+The `@client{}` block is compiled to WASM and runs in the browser. The JavaScript runtime (`zigx-runtime.js`) handles:
+- Loading and instantiating the WASM module
+- Binding event handlers to DOM elements
+- Calling exported Zig functions when events fire
+- Updating the DOM via the RenderTree differ
+
+### Conditional Rendering
+
+Use `@if` for conditional rendering on both server and client:
+
+```zigx
+@if(user.is_logged_in) {
+    <p>Welcome back, @{user.name}!</p>
+}
+
+@if(items.len == 0) {
+    <p class="empty">No items found.</p>
+}
+```
+
+### Control Flow (Planned) - SSR section
 
 Template loops for rendering lists with SSR:
 
@@ -236,9 +296,22 @@ This would generate HTML like:
 | Route directive | `@route("/path")` defines the page URL |
 | Expressions | `@{expression}` or `@variable` for dynamic content |
 | Server block | `@server{...}` contains Zig code for SSR |
+| Client block | `@client{...}` contains Zig code compiled to WASM |
+| Event handlers | `@onclick=fn`, `@onchange=fn`, `@onsubmit=fn` |
+| Conditionals | `@if(condition) { ... }` for conditional rendering |
 | Init function | `pub fn init()` or `pub fn init(ctx: *const PageContext)` |
 | Custom routes | `pub fn routes(app: *App)` to register API endpoints |
 | Auto-registration | `app.addZigxPages()` registers all `.zigx` files |
+
+### Client Runtime
+
+| Feature | Description |
+|---------|-------------|
+| WASM Loading | Automatic loading via `zigx-runtime.js` |
+| Event Binding | Declarative binding with `@onclick`, `@onchange`, etc. |
+| DOM Updates | RenderTree-based diffing for efficient updates |
+| JS Bridge | Zig functions can call JS DOM APIs via `runtime.zig` |
+| Handle System | Element handles for WASM↔DOM communication |
 
 ### Response Examples
 
@@ -271,7 +344,13 @@ Zigx/
 │   ├── zigx.zig              # Public API exports
 │   ├── Framework/
 │   │   ├── Compiler/         # .zigx lexer and parser
-│   │   └── Http/             # Server, router, request/response
+│   │   ├── Http/             # Server, router, request/response
+│   │   ├── Client/           # Client-side WASM runtime
+│   │   │   ├── runtime.zig   # Zig↔JS bridge functions
+│   │   │   ├── differ.zig    # RenderTree diffing algorithm
+│   │   │   └── zigx-runtime.js  # JavaScript runtime
+│   │   └── Shared/           # Code shared between server/client
+│   │       └── render_tree.zig  # Virtual DOM representation
 │   └── App/
 │       └── Pages/            # Your .zigx pages go here
 │           ├── Home.zigx
@@ -280,6 +359,8 @@ Zigx/
 ├── build/
 │   ├── gen_zigx.zig          # Code generator
 │   └── codegen/              # Code generation modules
+│       ├── server.zig        # Server-side code generation
+│       └── client.zig        # Client-side WASM code generation
 └── src/gen/                  # Auto-generated (gitignored)
     ├── routes.zig            # Route registry
     └── server/               # Generated handlers
@@ -297,14 +378,17 @@ Zigx/
 - JSON and HTML response builders
 - Route registration via `@server{ pub fn routes(...) }`
 - Page initialization with `init()` / `init(ctx)`
+- Client-side WASM compilation (`@client{}` blocks)
+- Event handlers (`@onclick`, `@onchange`, `@onsubmit`)
+- Conditional rendering (`@if`)
+- RenderTree-based DOM diffing
+- JavaScript runtime for WASM↔DOM communication
 
 **What's not built yet:**
 
-- Client-side WASM compilation (`@client{}` blocks)
 - Reactive data binding (`@bind`)
-- Event handlers (`@onclick`)
-- Template control flow (`@for`, `@if`)
-- Client-server hydration
+- Template loops (`@for`)
+- Full client-server hydration
 
 ## Goals
 

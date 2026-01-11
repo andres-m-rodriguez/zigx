@@ -12,6 +12,7 @@ pub const TokenKind = enum {
     ForBlock, // @for(collection) |capture| { body }
     IfBlock, // @if(condition) { body } optionally with else
     WhileBlock, // @while(condition) |capture| { body }
+    EventHandler, // @onclick=handler_name
     Eof,
 };
 
@@ -23,29 +24,51 @@ pub const ControlFlowData = struct {
     else_body: ?[]const u8, // else branch for @if, null otherwise
 };
 
+/// Data for event handler tokens (@onclick=handler)
+pub const EventHandlerData = struct {
+    event: []const u8, // "onclick", "onchange", etc.
+    handler: []const u8, // function name to call
+};
+
 pub const Token = struct {
     kind: TokenKind,
     lexeme: []const u8,
     control_flow: ?ControlFlowData = null,
+    event_handler: ?EventHandlerData = null,
 };
 
 pub const Lexer = struct {
     reader: *std.Io.Reader,
     token_buf: std.ArrayList(u8),
+    // Pending identifier from failed @else check (e.g., saw @client instead of @else)
+    pending_at_identifier: ?[]const u8 = null,
 
     pub fn init(reader: *std.Io.Reader) Lexer {
         return .{
             .reader = reader,
             .token_buf = std.ArrayList(u8){},
+            .pending_at_identifier = null,
         };
     }
 
     pub fn deinit(self: *Lexer, allocator: std.mem.Allocator) void {
         self.token_buf.deinit(allocator);
+        if (self.pending_at_identifier) |ident| {
+            allocator.free(ident);
+        }
     }
 
     pub fn next(self: *Lexer, allocator: std.mem.Allocator) !Token {
         self.token_buf.clearRetainingCapacity();
+
+        // If we have a pending @identifier from a failed @else check, process it
+        if (self.pending_at_identifier) |ident| {
+            self.pending_at_identifier = null;
+            // Copy to token_buf and process as if we just read @identifier
+            try self.token_buf.appendSlice(allocator, ident);
+            allocator.free(ident);
+            return try self.processAtIdentifier(allocator);
+        }
 
         const first_byte = self.reader.takeByte() catch |err| switch (err) {
             error.EndOfStream => return Token{ .kind = .Eof, .lexeme = "" },
@@ -148,6 +171,66 @@ pub const Lexer = struct {
             }
         }
 
+        // Check for event handler: @onclick=handler_name
+        if (next_byte == '=') {
+            _ = try self.reader.takeByte(); // consume '='
+            return try self.lexEventHandler(allocator, identifier);
+        }
+
+        // Just an expression like @myVariable
+        return Token{ .kind = .Expression, .lexeme = identifier };
+    }
+
+    /// Processes an @identifier that was already read (used for pending_at_identifier from @else check)
+    fn processAtIdentifier(self: *Lexer, allocator: std.mem.Allocator) !Token {
+        const identifier = self.token_buf.items;
+
+        // Check if followed by '{'
+        const next_byte = self.reader.peekByte() catch |err| switch (err) {
+            error.EndOfStream => {
+                return Token{ .kind = .Expression, .lexeme = identifier };
+            },
+            else => return err,
+        };
+
+        if (next_byte == '{') {
+            _ = try self.reader.takeByte(); // consume '{'
+
+            if (std.mem.eql(u8, identifier, "server")) {
+                self.token_buf.clearRetainingCapacity();
+                return try self.lexBraceBlock(allocator, .ServerBlock);
+            } else if (std.mem.eql(u8, identifier, "client")) {
+                self.token_buf.clearRetainingCapacity();
+                return try self.lexBraceBlock(allocator, .ClientBlock);
+            } else {
+                self.token_buf.clearRetainingCapacity();
+                return try self.lexBraceBlock(allocator, .ExpressionBlock);
+            }
+        }
+
+        // Check for @route("...")
+        if (std.mem.eql(u8, identifier, "route") and next_byte == '(') {
+            _ = try self.reader.takeByte(); // consume '('
+            return try self.lexRouteDirective(allocator);
+        }
+
+        // Check for control flow: @for(...), @if(...), @while(...)
+        if (next_byte == '(') {
+            if (std.mem.eql(u8, identifier, "for")) {
+                return try self.lexForBlock(allocator);
+            } else if (std.mem.eql(u8, identifier, "if")) {
+                return try self.lexIfBlock(allocator);
+            } else if (std.mem.eql(u8, identifier, "while")) {
+                return try self.lexWhileBlock(allocator);
+            }
+        }
+
+        // Check for event handler: @onclick=handler_name
+        if (next_byte == '=') {
+            _ = try self.reader.takeByte(); // consume '='
+            return try self.lexEventHandler(allocator, identifier);
+        }
+
         // Just an expression like @myVariable
         return Token{ .kind = .Expression, .lexeme = identifier };
     }
@@ -189,6 +272,43 @@ pub const Lexer = struct {
         }
 
         return Token{ .kind = .RouteDirective, .lexeme = self.token_buf.items };
+    }
+
+    /// Lexes @eventname=handler (e.g., @onclick=increment)
+    fn lexEventHandler(self: *Lexer, allocator: std.mem.Allocator, event_name: []const u8) !Token {
+        // Save event name (already in token_buf from lexAtIdentifier)
+        const event = try allocator.dupe(u8, event_name);
+        errdefer allocator.free(event);
+
+        // Read handler name until whitespace or '>'
+        var handler_buf = std.ArrayList(u8){};
+        errdefer handler_buf.deinit(allocator);
+
+        while (true) {
+            const byte = self.reader.peekByte() catch |err| switch (err) {
+                error.EndOfStream => break,
+                else => return err,
+            };
+
+            // Stop at whitespace, '>', or other delimiters
+            if (byte == ' ' or byte == '\t' or byte == '\n' or byte == '\r' or byte == '>') {
+                break;
+            }
+
+            try handler_buf.append(allocator, byte);
+            _ = try self.reader.takeByte();
+        }
+
+        const handler = try handler_buf.toOwnedSlice(allocator);
+
+        return Token{
+            .kind = .EventHandler,
+            .lexeme = event,
+            .event_handler = .{
+                .event = event,
+                .handler = handler,
+            },
+        };
     }
 
     fn lexBraceBlock(self: *Lexer, allocator: std.mem.Allocator, kind: TokenKind) !Token {
@@ -425,19 +545,24 @@ pub const Lexer = struct {
 
     /// Tries to read @else { body }, returns null if not present
     fn tryReadElseBlock(self: *Lexer, allocator: std.mem.Allocator) !?[]const u8 {
-        // Check if next is '@else'
+        // Check if next is '@else' using lookahead (don't consume until sure)
         const first = self.reader.peekByte() catch return null;
         if (first != '@') return null;
 
-        // Save position - we need to peek ahead for "else"
-        // Read and check
-        _ = try self.reader.takeByte(); // consume '@'
+        // Peek ahead to check if it's "@else" - read into buffer without consuming
+        var peek_buf: [5]u8 = undefined; // "@else" is 5 chars
+        var peek_len: usize = 0;
 
-        // Read identifier
+        // We already know first byte is '@', so peek the next 4 bytes for "else"
+        _ = self.reader.takeByte() catch return null; // consume '@'
+        peek_buf[0] = '@';
+        peek_len = 1;
+
+        // Read up to 4 more chars to check for "else"
         var ident_buf = std.ArrayList(u8){};
         defer ident_buf.deinit(allocator);
 
-        while (true) {
+        while (ident_buf.items.len < 10) { // reasonable limit
             const byte = self.reader.peekByte() catch break;
             if (isIdentifierChar(byte)) {
                 try ident_buf.append(allocator, byte);
@@ -448,10 +573,10 @@ pub const Lexer = struct {
         }
 
         if (!std.mem.eql(u8, ident_buf.items, "else")) {
-            // Not @else - this is a problem, we consumed the '@'
-            // For now, return error. In a more robust implementation,
-            // we'd need backtracking or lookahead.
-            return error.UnexpectedToken;
+            // Not @else - store the consumed identifier so it can be processed as a new token
+            // The next call to next() will pick this up via pending_at_identifier
+            self.pending_at_identifier = try allocator.dupe(u8, ident_buf.items);
+            return null;
         }
 
         // Skip whitespace after @else

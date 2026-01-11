@@ -1,12 +1,30 @@
-@route("/counter/")
+@route("/counter")
 <h1>Counter</h1>
 <p>Value: @counter</p>
 <button @onclick=increment>Increment</button>
+<button @onclick=decrement>Decrement</button>
+
+@if(show_something){
+    <h1>Hello world before 10</h1>
+}
 
 @client{
-    counter:usize = 0;
-
-    pub fn increment(){
-        counter+= 1;
+    var counter: usize = 0;
+    var show_something = true;
+    pub fn increment() void {
+        counter += 1;
+        if(counter > 10){
+            show_something = false;
+        }
     }
+    pub fn decrement() void {
+        counter -= 1;
+    }
+
+  }
+  
+@server{
+    var counter: usize = 0;
+    var show_something = true;
+
 }

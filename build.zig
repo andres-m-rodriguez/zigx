@@ -47,6 +47,19 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
     });
 
+    // Create the render_tree module (shared between server and client)
+    // Host version for code generation
+    const render_tree_host_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Shared/render_tree.zig"),
+        .target = b.graph.host,
+    });
+
+    // Native version for the server executable
+    const render_tree_native_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Shared/render_tree.zig"),
+        .target = target,
+    });
+
     // Create the zig server parser module (for parsing zig code to find imports)
     const zig_server_parser_mod = b.createModule(.{
         .root_source_file = b.path("src/Framework/Compiler/server/parser.zig"),
@@ -74,6 +87,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "common", .module = codegen_common },
             .{ .name = "zigxParser", .module = zigx_compiler_mod },
             .{ .name = "zigServerParser", .module = zig_server_parser_mod },
+            .{ .name = "render_tree", .module = render_tree_host_mod },
         },
     });
 
@@ -83,6 +97,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "common", .module = codegen_common },
             .{ .name = "zigxParser", .module = zigx_compiler_mod },
+            .{ .name = "render_tree", .module = render_tree_host_mod },
         },
     });
 
@@ -114,6 +129,71 @@ pub fn build(b: *std.Build) void {
     const zigx_files_scanner = b.addRunArtifact(zigx_generator);
     zigx_files_scanner.addArg("src/gen/routes.zig");
 
+    // ============================================
+    // WASM Client Compilation
+    // ============================================
+
+    // WASM target for client-side code
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .freestanding,
+    });
+
+    // Create the render_tree module for WASM target
+    const render_tree_wasm_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Shared/render_tree.zig"),
+        .target = wasm_target,
+    });
+
+    // Create the differ module for WASM target (depends on render_tree)
+    const differ_wasm_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Client/differ.zig"),
+        .target = wasm_target,
+        .imports = &.{
+            .{ .name = "render_tree", .module = render_tree_wasm_mod },
+        },
+    });
+
+    // Create the client runtime module for WASM
+    const client_runtime_mod = b.createModule(.{
+        .root_source_file = b.path("src/Framework/Client/runtime.zig"),
+        .target = wasm_target,
+    });
+
+    // Build MyCounter WASM (MVP: hardcoded, later: scan src/gen/client/)
+    const client_wasm = b.addExecutable(.{
+        .name = "MyCounter",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/gen/client/MyCounter.zig"),
+            .target = wasm_target,
+            .optimize = .Debug,
+            .imports = &.{
+                .{ .name = "runtime", .module = client_runtime_mod },
+                .{ .name = "render_tree", .module = render_tree_wasm_mod },
+                .{ .name = "differ", .module = differ_wasm_mod },
+            },
+        }),
+    });
+    // WASM library - no entry point needed
+    client_wasm.entry = .disabled;
+    // WASM needs to export memory
+    client_wasm.export_memory = true;
+    // Force dynamic exports to be retained
+    client_wasm.rdynamic = true;
+
+    // Make WASM depend on generator
+    client_wasm.step.dependOn(&zigx_files_scanner.step);
+
+    // Install WASM to src/gen/wasm/ so it can be @embedFile'd by the server
+    const install_wasm = b.addInstallArtifact(client_wasm, .{
+        .dest_dir = .{ .override = .{ .custom = "../src/gen/wasm" } },
+    });
+    install_wasm.step.dependOn(&client_wasm.step);
+
+    // Create a step to build all WASM files
+    const wasm_step = b.step("wasm", "Build WASM client modules");
+    wasm_step.dependOn(&client_wasm.step);
+
     //
     // If neither case applies to you, feel free to delete the declaration you
     // don't need and to put everything under a single module.
@@ -139,11 +219,15 @@ pub fn build(b: *std.Build) void {
                 // can be extremely useful in case of collisions (which can happen
                 // importing modules from different packages).
                 .{ .name = "Zigx", .module = mod },
+                // render_tree is used by generated server code
+                .{ .name = "render_tree", .module = render_tree_native_mod },
             },
         }),
     });
     // Ensure generator runs before compilation
     exe.step.dependOn(&zigx_files_scanner.step);
+    // Also build and install WASM clients before the server (so @embedFile works)
+    exe.step.dependOn(&install_wasm.step);
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
     // step). By default the install prefix is `zig-out/` but can be overridden

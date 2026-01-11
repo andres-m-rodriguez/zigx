@@ -13,6 +13,9 @@ pub const Params = router.Params;
 pub const Param = router.Param;
 pub const Method = router.Method;
 
+// Embedded static files for Zigx client runtime
+const zigx_runtime_js = @embedFile("../../Client/zigx-runtime.js");
+
 pub const App = struct {
     port: u16,
     app_router: router.Router,
@@ -50,6 +53,33 @@ pub const App = struct {
 
     pub fn addZigxPages(self: *App, allocator: std.mem.Allocator) void {
         routes.registerRoutes(allocator, self);
+        // Add Zigx static file routes
+        self.addZigxStaticRoutes(allocator);
+    }
+
+    fn addZigxStaticRoutes(self: *App, allocator: std.mem.Allocator) void {
+        // Serve the JavaScript runtime
+        self.app_router.addRoute(allocator, .GET, "/_zigx/runtime.js", zigxRuntimeHandler) catch {};
+        // Serve WASM files (MVP: specific route, later: dynamic param)
+        self.app_router.addRoute(allocator, .GET, "/_zigx/MyCounter.wasm", zigxWasmHandler) catch {};
+    }
+
+    fn zigxRuntimeHandler(_: *RequestContext) anyerror!Response {
+        return Response{
+            .status_code = .ok,
+            .content_type = "application/javascript",
+            .body = zigx_runtime_js,
+        };
+    }
+
+    fn zigxWasmHandler(_: *RequestContext) anyerror!Response {
+        // WASM is embedded at compile time (build.zig ensures it's built first)
+        const wasm_data = @embedFile("../../../gen/wasm/MyCounter.wasm");
+        return Response{
+            .status_code = .ok,
+            .content_type = "application/wasm",
+            .body = wasm_data,
+        };
     }
 
     pub fn listen(self: *App, allocator: std.mem.Allocator) !void {

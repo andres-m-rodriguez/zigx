@@ -13,6 +13,13 @@ pub const Node = union(enum) {
     if_stmt: IfStmt,
     /// While loop: @while(condition) |item| { body }
     while_loop: WhileLoop,
+    /// Event handler: @onclick=handler
+    event_handler: EventHandler,
+
+    pub const EventHandler = struct {
+        event: []const u8, // "onclick", "onchange", etc.
+        handler: []const u8, // function name to call
+    };
 
     pub const ForLoop = struct {
         collection: []const u8,
@@ -66,6 +73,10 @@ pub const Node = union(enum) {
                 }
                 allocator.free(loop.body);
             },
+            .event_handler => |eh| {
+                allocator.free(eh.event);
+                allocator.free(eh.handler);
+            },
         }
     }
 };
@@ -76,6 +87,7 @@ pub const ZigxDocument = struct {
     content: []const Node, // AST nodes for the template
     server_code: []const u8,
     client_code: []const u8,
+    event_handlers: []const Node.EventHandler, // collected event handlers
 
     pub fn deinit(self: *ZigxDocument, allocator: std.mem.Allocator) void {
         allocator.free(self.file_name);
@@ -86,6 +98,11 @@ pub const ZigxDocument = struct {
         allocator.free(self.content);
         allocator.free(self.server_code);
         allocator.free(self.client_code);
+        for (self.event_handlers) |eh| {
+            allocator.free(eh.event);
+            allocator.free(eh.handler);
+        }
+        allocator.free(self.event_handlers);
     }
 };
 
@@ -102,6 +119,15 @@ pub fn parse(allocator: std.mem.Allocator, reader: *std.Io.Reader, file_name: []
             node.deinit(allocator);
         }
         nodes.deinit(allocator);
+    }
+
+    var event_handlers = std.ArrayList(Node.EventHandler){};
+    errdefer {
+        for (event_handlers.items) |eh| {
+            allocator.free(eh.event);
+            allocator.free(eh.handler);
+        }
+        event_handlers.deinit(allocator);
     }
 
     var zigx_lexer = lexer.Lexer.init(reader);
@@ -154,6 +180,25 @@ pub fn parse(allocator: std.mem.Allocator, reader: *std.Io.Reader, file_name: []
                 freeControlFlowData(allocator, cf);
                 try nodes.append(allocator, node);
             },
+            .EventHandler => {
+                const eh_data = token.event_handler orelse return error.MissingEventHandlerData;
+                // Store in event_handlers list for code generation
+                const event = try allocator.dupe(u8, eh_data.event);
+                errdefer allocator.free(event);
+                const handler = try allocator.dupe(u8, eh_data.handler);
+                try event_handlers.append(allocator, .{
+                    .event = event,
+                    .handler = handler,
+                });
+                // Also add to nodes for HTML generation with data attributes
+                try nodes.append(allocator, Node{ .event_handler = .{
+                    .event = try allocator.dupe(u8, eh_data.event),
+                    .handler = try allocator.dupe(u8, eh_data.handler),
+                } });
+                // Free lexer allocations
+                allocator.free(eh_data.event);
+                allocator.free(eh_data.handler);
+            },
         }
     }
 
@@ -169,12 +214,14 @@ pub fn parse(allocator: std.mem.Allocator, reader: *std.Io.Reader, file_name: []
         .content = try nodes.toOwnedSlice(allocator),
         .server_code = try server_buf.toOwnedSlice(allocator),
         .client_code = try client_buf.toOwnedSlice(allocator),
+        .event_handlers = try event_handlers.toOwnedSlice(allocator),
     };
 }
 
 const ParseError = error{
     OutOfMemory,
     MissingControlFlowData,
+    MissingEventHandlerData,
     MissingCapture,
     UnexpectedEof,
     ExpectedOpenBrace,
@@ -240,6 +287,16 @@ fn parseBody(allocator: std.mem.Allocator, body_content: []const u8) ParseError!
                 const node = try parseWhileLoop(allocator, cf);
                 freeControlFlowData(allocator, cf);
                 try nodes.append(allocator, node);
+            },
+            .EventHandler => {
+                const eh_data = token.event_handler orelse return error.MissingEventHandlerData;
+                try nodes.append(allocator, Node{ .event_handler = .{
+                    .event = try allocator.dupe(u8, eh_data.event),
+                    .handler = try allocator.dupe(u8, eh_data.handler),
+                } });
+                // Free lexer allocations
+                allocator.free(eh_data.event);
+                allocator.free(eh_data.handler);
             },
             // These shouldn't appear inside control flow bodies
             .RouteDirective, .ServerBlock, .ClientBlock => {},

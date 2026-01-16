@@ -91,8 +91,8 @@ fn writeRenderTreeHandler(w: *Writer, doc: zigxParser.ZigxDocument) !void {
     try w.writeAll("\n\n");
 
     try w.writeAll(
-        \\    var builder = render_tree.RenderTreeBuilder.init(ctx.allocator);
-        \\    errdefer builder.deinit();
+        \\    var builder = render_tree.RenderTreeBuilder{};
+        \\    errdefer builder.deinit(ctx.allocator);
         \\
         \\
     );
@@ -104,8 +104,8 @@ fn writeRenderTreeHandler(w: *Writer, doc: zigxParser.ZigxDocument) !void {
 
     try w.writeAll(
         \\
-        \\    var tree = try builder.build();
-        \\    defer tree.deinit();
+        \\    var tree = try builder.build(ctx.allocator);
+        \\    defer tree.deinit(ctx.allocator);
         \\
         \\    const content_html = try render_tree.toHtmlString(ctx.allocator, tree);
         \\    defer ctx.allocator.free(content_html);
@@ -151,7 +151,7 @@ fn writeRenderNodeCode(w: *Writer, node: Node, seq: *u32, indent: usize) !void {
         .html => |text| {
             if (text.len > 0) {
                 try writeIndent(w, indent);
-                try w.print("try builder.addText({d}, \"", .{seq.*});
+                try w.print("try builder.addText(ctx.allocator, {d}, \"", .{seq.*});
                 try writeEscapedForString(w, text);
                 try w.writeAll("\");\n");
                 seq.* += 1;
@@ -165,14 +165,14 @@ fn writeRenderNodeCode(w: *Writer, node: Node, seq: *u32, indent: usize) !void {
             try writeIndent(w, indent + 1);
             try w.print("const text = std.fmt.bufPrint(&buf, render_tree.fmtSpec(@TypeOf({s})), .{{{s}}}) catch \"?\";\n", .{ expr, expr });
             try writeIndent(w, indent + 1);
-            try w.print("try builder.addText({d}, text);\n", .{seq.*});
+            try w.print("try builder.addText(ctx.allocator, {d}, text);\n", .{seq.*});
             try writeIndent(w, indent);
             try w.writeAll("}\n");
             seq.* += 1;
         },
         .event_handler => |eh| {
             try writeIndent(w, indent);
-            try w.print("try builder.addEvent({d}, \"{s}\", handler_ids.{s});\n", .{ seq.*, eh.event[2..], eh.handler });
+            try w.print("try builder.addEvent(ctx.allocator, {d}, \"{s}\", handler_ids.{s});\n", .{ seq.*, eh.event[2..], eh.handler });
             seq.* += 1;
         },
         .for_loop => |loop| {

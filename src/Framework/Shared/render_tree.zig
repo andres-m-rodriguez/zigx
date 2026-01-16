@@ -54,48 +54,37 @@ pub const RenderFrame = struct {
 
 pub const RenderTree = struct {
     frames: []const RenderFrame,
-    allocator: std.mem.Allocator,
 
-    pub fn deinit(self: *RenderTree) void {
-        self.allocator.free(self.frames);
+    pub fn deinit(self: *RenderTree, allocator: std.mem.Allocator) void {
+        allocator.free(self.frames);
     }
 };
 
 pub const RenderTreeBuilder = struct {
-    frames: std.ArrayList(RenderFrame),
-    element_stack: std.ArrayList(usize),
-    tag_stack: std.ArrayList([]const u8),
-    allocator: std.mem.Allocator,
+    frames: std.ArrayList(RenderFrame) = .{},
+    element_stack: std.ArrayList(usize) = .{},
+    tag_stack: std.ArrayList([]const u8) = .{},
 
-    pub fn init(allocator: std.mem.Allocator) RenderTreeBuilder {
-        return .{
-            .frames = .{},
-            .element_stack = .{},
-            .tag_stack = .{},
-            .allocator = allocator,
-        };
+    pub fn deinit(self: *RenderTreeBuilder, allocator: std.mem.Allocator) void {
+        self.frames.deinit(allocator);
+        self.element_stack.deinit(allocator);
+        self.tag_stack.deinit(allocator);
     }
 
-    pub fn deinit(self: *RenderTreeBuilder) void {
-        self.frames.deinit(self.allocator);
-        self.element_stack.deinit(self.allocator);
-        self.tag_stack.deinit(self.allocator);
-    }
-
-    pub fn openElement(self: *RenderTreeBuilder, seq: u32, tag: []const u8) !usize {
+    pub fn openElement(self: *RenderTreeBuilder, allocator: std.mem.Allocator, seq: u32, tag: []const u8) !usize {
         const idx = self.frames.items.len;
-        try self.frames.append(self.allocator, .{
+        try self.frames.append(allocator, .{
             .frame_type = .element,
             .sequence = seq,
             .data = .{ .element = .{ .tag = tag } },
             .subtree_length = 0,
         });
-        try self.element_stack.append(self.allocator, idx);
-        try self.tag_stack.append(self.allocator, tag);
+        try self.element_stack.append(allocator, idx);
+        try self.tag_stack.append(allocator, tag);
         return idx;
     }
 
-    pub fn closeElement(self: *RenderTreeBuilder) !void {
+    pub fn closeElement(self: *RenderTreeBuilder, allocator: std.mem.Allocator) !void {
         if (self.element_stack.items.len == 0) return error.NoOpenElement;
 
         const open_idx = self.element_stack.pop();
@@ -105,7 +94,7 @@ pub const RenderTreeBuilder = struct {
 
         self.frames.items[open_idx].subtree_length = @intCast(subtree_len);
 
-        try self.frames.append(self.allocator, .{
+        try self.frames.append(allocator, .{
             .frame_type = .region,
             .sequence = self.frames.items[open_idx].sequence,
             .data = .{ .region = {} },
@@ -115,8 +104,8 @@ pub const RenderTreeBuilder = struct {
         _ = tag;
     }
 
-    pub fn addText(self: *RenderTreeBuilder, seq: u32, content: []const u8) !void {
-        try self.frames.append(self.allocator, .{
+    pub fn addText(self: *RenderTreeBuilder, allocator: std.mem.Allocator, seq: u32, content: []const u8) !void {
+        try self.frames.append(allocator, .{
             .frame_type = .text,
             .sequence = seq,
             .data = .{ .text = .{ .content = content } },
@@ -124,8 +113,8 @@ pub const RenderTreeBuilder = struct {
         });
     }
 
-    pub fn addAttribute(self: *RenderTreeBuilder, seq: u32, name: []const u8, value: []const u8) !void {
-        try self.frames.append(self.allocator, .{
+    pub fn addAttribute(self: *RenderTreeBuilder, allocator: std.mem.Allocator, seq: u32, name: []const u8, value: []const u8) !void {
+        try self.frames.append(allocator, .{
             .frame_type = .attribute,
             .sequence = seq,
             .data = .{ .attribute = .{ .name = name, .value = value } },
@@ -133,8 +122,8 @@ pub const RenderTreeBuilder = struct {
         });
     }
 
-    pub fn addEvent(self: *RenderTreeBuilder, seq: u32, name: []const u8, handler_id: u32) !void {
-        try self.frames.append(self.allocator, .{
+    pub fn addEvent(self: *RenderTreeBuilder, allocator: std.mem.Allocator, seq: u32, name: []const u8, handler_id: u32) !void {
+        try self.frames.append(allocator, .{
             .frame_type = .event,
             .sequence = seq,
             .data = .{ .event = .{ .name = name, .handler_id = handler_id } },
@@ -142,14 +131,13 @@ pub const RenderTreeBuilder = struct {
         });
     }
 
-    pub fn build(self: *RenderTreeBuilder) !RenderTree {
+    pub fn build(self: *RenderTreeBuilder, allocator: std.mem.Allocator) !RenderTree {
         if (self.element_stack.items.len > 0) {
             return error.UnclosedElements;
         }
 
         return .{
-            .frames = try self.frames.toOwnedSlice(self.allocator),
-            .allocator = self.allocator,
+            .frames = try self.frames.toOwnedSlice(allocator),
         };
     }
 };
@@ -231,16 +219,16 @@ fn appendHtmlEscaped(allocator: std.mem.Allocator, result: *std.ArrayList(u8), t
 test "RenderTreeBuilder basic element" {
     const allocator = std.testing.allocator;
 
-    var builder = RenderTreeBuilder.init(allocator);
-    defer builder.deinit();
+    var builder = RenderTreeBuilder{};
+    defer builder.deinit(allocator);
 
-    _ = try builder.openElement(0, "div");
-    try builder.addAttribute(1, "class", "container");
-    try builder.addText(2, "Hello");
-    try builder.closeElement();
+    _ = try builder.openElement(allocator, 0, "div");
+    try builder.addAttribute(allocator, 1, "class", "container");
+    try builder.addText(allocator, 2, "Hello");
+    try builder.closeElement(allocator);
 
-    var tree = try builder.build();
-    defer tree.deinit();
+    var tree = try builder.build(allocator);
+    defer tree.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 4), tree.frames.len);
     try std.testing.expectEqual(FrameType.element, tree.frames[0].frame_type);
@@ -252,17 +240,17 @@ test "RenderTreeBuilder basic element" {
 test "RenderTreeBuilder nested elements" {
     const allocator = std.testing.allocator;
 
-    var builder = RenderTreeBuilder.init(allocator);
-    defer builder.deinit();
+    var builder = RenderTreeBuilder{};
+    defer builder.deinit(allocator);
 
-    _ = try builder.openElement(0, "div");
-    _ = try builder.openElement(1, "span");
-    try builder.addText(2, "nested");
-    try builder.closeElement();
-    try builder.closeElement();
+    _ = try builder.openElement(allocator, 0, "div");
+    _ = try builder.openElement(allocator, 1, "span");
+    try builder.addText(allocator, 2, "nested");
+    try builder.closeElement(allocator);
+    try builder.closeElement(allocator);
 
-    var tree = try builder.build();
-    defer tree.deinit();
+    var tree = try builder.build(allocator);
+    defer tree.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 5), tree.frames.len);
 }
@@ -270,41 +258,39 @@ test "RenderTreeBuilder nested elements" {
 test "toHtmlString basic" {
     const allocator = std.testing.allocator;
 
-    var builder = RenderTreeBuilder.init(allocator);
+    var builder = RenderTreeBuilder{};
+    defer builder.deinit(allocator);
 
-    _ = try builder.openElement(0, "div");
-    try builder.addAttribute(1, "class", "test");
-    try builder.addText(2, "Hello");
-    try builder.closeElement();
+    _ = try builder.openElement(allocator, 0, "div");
+    try builder.addAttribute(allocator, 1, "class", "test");
+    try builder.addText(allocator, 2, "Hello");
+    try builder.closeElement(allocator);
 
-    var tree = try builder.build();
-    defer tree.deinit();
+    var tree = try builder.build(allocator);
+    defer tree.deinit(allocator);
 
     const html = try toHtmlString(allocator, tree);
     defer allocator.free(html);
 
     try std.testing.expectEqualStrings("<div class=\"test\">Hello</div>", html);
-
-    builder.deinit();
 }
 
 test "toHtmlString with event" {
     const allocator = std.testing.allocator;
 
-    var builder = RenderTreeBuilder.init(allocator);
+    var builder = RenderTreeBuilder{};
+    defer builder.deinit(allocator);
 
-    _ = try builder.openElement(0, "button");
-    try builder.addEvent(1, "click", 0);
-    try builder.addText(2, "Click me");
-    try builder.closeElement();
+    _ = try builder.openElement(allocator, 0, "button");
+    try builder.addEvent(allocator, 1, "click", 0);
+    try builder.addText(allocator, 2, "Click me");
+    try builder.closeElement(allocator);
 
-    var tree = try builder.build();
-    defer tree.deinit();
+    var tree = try builder.build(allocator);
+    defer tree.deinit(allocator);
 
     const html = try toHtmlString(allocator, tree);
     defer allocator.free(html);
 
     try std.testing.expectEqualStrings("<button data-zigx-click=\"0\">Click me</button>", html);
-
-    builder.deinit();
 }

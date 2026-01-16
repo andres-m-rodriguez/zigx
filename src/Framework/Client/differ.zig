@@ -426,12 +426,13 @@ fn getParentSequenceFromOld(frames: []const RenderFrame, target_sequence: u32) ?
 test "diff empty to single element" {
     const allocator = std.testing.allocator;
 
-    var builder = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder.openElement(0, "div");
-    try builder.addText(1, "Hello");
-    try builder.closeElement();
-    var new_tree = try builder.build();
-    defer new_tree.deinit();
+    var builder = render_tree.RenderTreeBuilder{};
+    defer builder.deinit(allocator);
+    _ = try builder.openElement(allocator, 0, "div");
+    try builder.addText(allocator, 1, "Hello");
+    try builder.closeElement(allocator);
+    var new_tree = try builder.build(allocator);
+    defer new_tree.deinit(allocator);
 
     var handle_map = HandleMap.init(allocator);
     defer handle_map.deinit();
@@ -443,26 +444,26 @@ test "diff empty to single element" {
     try std.testing.expect(result.patches.len >= 2);
     try std.testing.expectEqual(PatchType.create_element, result.patches[0].patch_type);
     try std.testing.expectEqual(PatchType.create_text, result.patches[1].patch_type);
-
-    builder.deinit();
 }
 
 test "diff same trees no patches" {
     const allocator = std.testing.allocator;
 
-    var builder1 = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder1.openElement(0, "div");
-    try builder1.addText(1, "Hello");
-    try builder1.closeElement();
-    var tree1 = try builder1.build();
-    defer tree1.deinit();
+    var builder1 = render_tree.RenderTreeBuilder{};
+    defer builder1.deinit(allocator);
+    _ = try builder1.openElement(allocator, 0, "div");
+    try builder1.addText(allocator, 1, "Hello");
+    try builder1.closeElement(allocator);
+    var tree1 = try builder1.build(allocator);
+    defer tree1.deinit(allocator);
 
-    var builder2 = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder2.openElement(0, "div");
-    try builder2.addText(1, "Hello");
-    try builder2.closeElement();
-    var tree2 = try builder2.build();
-    defer tree2.deinit();
+    var builder2 = render_tree.RenderTreeBuilder{};
+    defer builder2.deinit(allocator);
+    _ = try builder2.openElement(allocator, 0, "div");
+    try builder2.addText(allocator, 1, "Hello");
+    try builder2.closeElement(allocator);
+    var tree2 = try builder2.build(allocator);
+    defer tree2.deinit(allocator);
 
     var handle_map = HandleMap.init(allocator);
     defer handle_map.deinit();
@@ -474,27 +475,26 @@ test "diff same trees no patches" {
 
     // Same content, no patches needed
     try std.testing.expectEqual(@as(usize, 0), result.patches.len);
-
-    builder1.deinit();
-    builder2.deinit();
 }
 
 test "diff text content change" {
     const allocator = std.testing.allocator;
 
-    var builder1 = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder1.openElement(0, "div");
-    try builder1.addText(1, "Hello");
-    try builder1.closeElement();
-    var tree1 = try builder1.build();
-    defer tree1.deinit();
+    var builder1 = render_tree.RenderTreeBuilder{};
+    defer builder1.deinit(allocator);
+    _ = try builder1.openElement(allocator, 0, "div");
+    try builder1.addText(allocator, 1, "Hello");
+    try builder1.closeElement(allocator);
+    var tree1 = try builder1.build(allocator);
+    defer tree1.deinit(allocator);
 
-    var builder2 = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder2.openElement(0, "div");
-    try builder2.addText(1, "World");
-    try builder2.closeElement();
-    var tree2 = try builder2.build();
-    defer tree2.deinit();
+    var builder2 = render_tree.RenderTreeBuilder{};
+    defer builder2.deinit(allocator);
+    _ = try builder2.openElement(allocator, 0, "div");
+    try builder2.addText(allocator, 1, "World");
+    try builder2.closeElement(allocator);
+    var tree2 = try builder2.build(allocator);
+    defer tree2.deinit(allocator);
 
     var handle_map = HandleMap.init(allocator);
     defer handle_map.deinit();
@@ -507,30 +507,29 @@ test "diff text content change" {
     // Should have update_text patch
     try std.testing.expectEqual(@as(usize, 1), result.patches.len);
     try std.testing.expectEqual(PatchType.update_text, result.patches[0].patch_type);
-
-    builder1.deinit();
-    builder2.deinit();
 }
 
 test "diff element removed" {
     const allocator = std.testing.allocator;
 
-    var builder1 = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder1.openElement(0, "div");
-    try builder1.addText(1, "Hello");
-    _ = try builder1.openElement(2, "span");
-    try builder1.addText(3, "World");
-    try builder1.closeElement();
-    try builder1.closeElement();
-    var tree1 = try builder1.build();
-    defer tree1.deinit();
+    var builder1 = render_tree.RenderTreeBuilder{};
+    defer builder1.deinit(allocator);
+    _ = try builder1.openElement(allocator, 0, "div");
+    try builder1.addText(allocator, 1, "Hello");
+    _ = try builder1.openElement(allocator, 2, "span");
+    try builder1.addText(allocator, 3, "World");
+    try builder1.closeElement(allocator);
+    try builder1.closeElement(allocator);
+    var tree1 = try builder1.build(allocator);
+    defer tree1.deinit(allocator);
 
-    var builder2 = render_tree.RenderTreeBuilder.init(allocator);
-    _ = try builder2.openElement(0, "div");
-    try builder2.addText(1, "Hello");
-    try builder2.closeElement();
-    var tree2 = try builder2.build();
-    defer tree2.deinit();
+    var builder2 = render_tree.RenderTreeBuilder{};
+    defer builder2.deinit(allocator);
+    _ = try builder2.openElement(allocator, 0, "div");
+    try builder2.addText(allocator, 1, "Hello");
+    try builder2.closeElement(allocator);
+    var tree2 = try builder2.build(allocator);
+    defer tree2.deinit(allocator);
 
     var handle_map = HandleMap.init(allocator);
     defer handle_map.deinit();
@@ -550,7 +549,4 @@ test "diff element removed" {
         }
     }
     try std.testing.expect(remove_count >= 2);
-
-    builder1.deinit();
-    builder2.deinit();
 }

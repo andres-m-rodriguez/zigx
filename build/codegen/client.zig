@@ -101,8 +101,8 @@ fn writeRenderState(w: *Writer) !void {
 fn writeRenderFunction(w: *Writer, doc: zigxParser.ZigxDocument) !void {
     try w.writeAll(
         \\fn render(allocator: std.mem.Allocator) !render_tree.RenderTree {
-        \\    var builder = render_tree.RenderTreeBuilder.init(allocator);
-        \\    errdefer builder.deinit();
+        \\    var builder = render_tree.RenderTreeBuilder{};
+        \\    errdefer builder.deinit(allocator);
         \\
         \\
     );
@@ -114,7 +114,7 @@ fn writeRenderFunction(w: *Writer, doc: zigxParser.ZigxDocument) !void {
 
     try w.writeAll(
         \\
-        \\    return builder.build();
+        \\    return builder.build(allocator);
         \\}
         \\
         \\
@@ -126,7 +126,7 @@ fn writeRenderNodeCode(w: *Writer, node: Node, seq: *u32, indent: usize) !void {
         .html => |text| {
             if (text.len > 0) {
                 try writeIndent(w, indent);
-                try w.print("try builder.addText({d}, \"", .{seq.*});
+                try w.print("try builder.addText(allocator, {d}, \"", .{seq.*});
                 try writeEscapedString(w, text);
                 try w.writeAll("\");\n");
                 seq.* += 1;
@@ -140,14 +140,14 @@ fn writeRenderNodeCode(w: *Writer, node: Node, seq: *u32, indent: usize) !void {
             try writeIndent(w, indent + 1);
             try w.print("const text = std.fmt.bufPrint(&buf, render_tree.fmtSpec(@TypeOf({s})), .{{{s}}}) catch \"?\";\n", .{ expr, expr });
             try writeIndent(w, indent + 1);
-            try w.print("try builder.addText({d}, text);\n", .{seq.*});
+            try w.print("try builder.addText(allocator, {d}, text);\n", .{seq.*});
             try writeIndent(w, indent);
             try w.writeAll("}\n");
             seq.* += 1;
         },
         .event_handler => |eh| {
             try writeIndent(w, indent);
-            try w.print("try builder.addEvent({d}, \"{s}\", handler_ids.{s});\n", .{ seq.*, eh.event[2..], eh.handler });
+            try w.print("try builder.addEvent(allocator, {d}, \"{s}\", handler_ids.{s});\n", .{ seq.*, eh.event[2..], eh.handler });
             seq.* += 1;
         },
         .for_loop => |loop| {
@@ -210,7 +210,7 @@ fn writeUpdateFunction(w: *Writer) !void {
         \\        rt.log("Render error");
         \\        return;
         \\    };
-        \\    defer new_tree.deinit();
+        \\    defer new_tree.deinit(allocator);
         \\
         \\    if (root_handle == 0) {
         \\        root_handle = rt.getRootHandle();

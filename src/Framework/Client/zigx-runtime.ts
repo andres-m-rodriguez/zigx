@@ -1,29 +1,70 @@
-"use strict";
-const ZigxRuntime = {
+interface ZigxExports {
+    memory: WebAssembly.Memory;
+    _zigx_init?: () => void;
+    [key: string]: unknown;
+}
+
+interface ZigxListeners {
+    [key: string]: EventListener;
+}
+
+interface HTMLElementWithListeners extends HTMLElement {
+    _zigxListeners?: ZigxListeners;
+}
+
+interface NodeWithListeners extends Node {
+    _zigxListeners?: ZigxListeners;
+}
+
+interface ZigxRuntimeType {
+    memory: WebAssembly.Memory | null;
+    exports: ZigxExports | null;
+    nextHandle: number;
+    handleToElement: Map<number, Node>;
+    elementToHandle: Map<Node, number>;
+    rootSelector: string;
+
+    getHandle(element: Node | null): number;
+    getElement(handle: number): Node | null;
+    removeHandle(handle: number): void;
+    load(wasmPath: string, rootSelector?: string): Promise<void>;
+    bindEvents(): void;
+    readString(ptr: number, len: number): string;
+    writeString(ptr: number, maxLen: number, str: string): number;
+    call(fnName: string, ...args: unknown[]): unknown;
+    callHandler(handlerId: number, ...args: unknown[]): unknown;
+}
+
+const ZigxRuntime: ZigxRuntimeType = {
     memory: null,
     exports: null,
+
     nextHandle: 1,
     handleToElement: new Map(),
     elementToHandle: new Map(),
+
     rootSelector: '#zigx-root',
-    getHandle(element) {
-        if (!element)
-            return 0;
+
+    getHandle(element: Node | null): number {
+        if (!element) return 0;
+
         if (this.elementToHandle.has(element)) {
-            return this.elementToHandle.get(element);
+            return this.elementToHandle.get(element)!;
         }
+
         const handle = this.nextHandle++;
         this.handleToElement.set(handle, element);
         this.elementToHandle.set(element, handle);
         return handle;
     },
-    getElement(handle) {
-        if (handle === 0)
-            return null;
+
+    getElement(handle: number): Node | null {
+        if (handle === 0) return null;
         return this.handleToElement.get(handle) || null;
     },
-    removeHandle(handle) {
-        const element = this.handleToElement.get(handle);
+
+    removeHandle(handle: number): void {
+        const element = this.handleToElement.get(handle) as NodeWithListeners | undefined;
         if (element) {
             this.elementToHandle.delete(element);
             this.handleToElement.delete(handle);
@@ -32,161 +73,193 @@ const ZigxRuntime = {
             }
         }
     },
-    async load(wasmPath, rootSelector = '#zigx-root') {
+
+    async load(wasmPath: string, rootSelector: string = '#zigx-root'): Promise<void> {
         this.rootSelector = rootSelector;
-        const imports = {
+
+        const imports: WebAssembly.Imports = {
             env: {
-                js_setTextContent: (idPtr, idLen, textPtr, textLen) => {
+                js_setTextContent: (idPtr: number, idLen: number, textPtr: number, textLen: number): void => {
                     const id = this.readString(idPtr, idLen);
                     const text = this.readString(textPtr, textLen);
                     const element = document.getElementById(id);
                     if (element) {
                         element.textContent = text;
-                    }
-                    else {
+                    } else {
                         console.warn(`[Zigx] Element not found: ${id}`);
                     }
                 },
-                js_setTextContentInt: (idPtr, idLen, value) => {
+
+                js_setTextContentInt: (idPtr: number, idLen: number, value: number): void => {
                     const id = this.readString(idPtr, idLen);
                     const element = document.getElementById(id);
                     if (element) {
                         element.textContent = String(value);
-                    }
-                    else {
+                    } else {
                         console.warn(`[Zigx] Element not found: ${id}`);
                     }
                 },
-                js_log: (ptr, len) => {
+
+                js_log: (ptr: number, len: number): void => {
                     console.log('[Zigx]', this.readString(ptr, len));
                 },
-                js_createElement: (tagPtr, tagLen) => {
+
+                js_createElement: (tagPtr: number, tagLen: number): number => {
                     const tag = this.readString(tagPtr, tagLen);
                     const element = document.createElement(tag);
                     return this.getHandle(element);
                 },
-                js_createTextNode: (textPtr, textLen) => {
+
+                js_createTextNode: (textPtr: number, textLen: number): number => {
                     const text = this.readString(textPtr, textLen);
                     const node = document.createTextNode(text);
                     return this.getHandle(node);
                 },
-                js_removeElement: (handle) => {
+
+                js_removeElement: (handle: number): void => {
                     const element = this.getElement(handle);
                     if (element && element.parentNode) {
                         element.parentNode.removeChild(element);
                     }
                     this.removeHandle(handle);
                 },
-                js_insertBefore: (parentHandle, childHandle, refHandle) => {
+
+                js_insertBefore: (parentHandle: number, childHandle: number, refHandle: number): void => {
                     const parent = this.getElement(parentHandle);
                     const child = this.getElement(childHandle);
                     const ref = refHandle ? this.getElement(refHandle) : null;
+
                     if (parent && child) {
                         parent.insertBefore(child, ref);
                     }
                 },
-                js_appendChild: (parentHandle, childHandle) => {
+
+                js_appendChild: (parentHandle: number, childHandle: number): void => {
                     const parent = this.getElement(parentHandle);
                     const child = this.getElement(childHandle);
+
                     if (parent && child) {
                         parent.appendChild(child);
                     }
                 },
-                js_setAttribute: (handle, namePtr, nameLen, valuePtr, valueLen) => {
-                    const element = this.getElement(handle);
+
+                js_setAttribute: (handle: number, namePtr: number, nameLen: number, valuePtr: number, valueLen: number): void => {
+                    const element = this.getElement(handle) as HTMLElement | null;
                     const name = this.readString(namePtr, nameLen);
                     const value = this.readString(valuePtr, valueLen);
+
                     if (element) {
                         element.setAttribute(name, value);
                     }
                 },
-                js_removeAttribute: (handle, namePtr, nameLen) => {
-                    const element = this.getElement(handle);
+
+                js_removeAttribute: (handle: number, namePtr: number, nameLen: number): void => {
+                    const element = this.getElement(handle) as HTMLElement | null;
                     const name = this.readString(namePtr, nameLen);
+
                     if (element) {
                         element.removeAttribute(name);
                     }
                 },
-                js_setTextContentByHandle: (handle, textPtr, textLen) => {
+
+                js_setTextContentByHandle: (handle: number, textPtr: number, textLen: number): void => {
                     const element = this.getElement(handle);
                     const text = this.readString(textPtr, textLen);
+
                     if (element) {
                         element.textContent = text;
                     }
                 },
-                js_updateTextNode: (handle, textPtr, textLen) => {
+
+                js_updateTextNode: (handle: number, textPtr: number, textLen: number): void => {
                     const node = this.getElement(handle);
                     const text = this.readString(textPtr, textLen);
+
                     if (node) {
                         node.textContent = text;
                     }
                 },
-                js_attachEvent: (handle, eventPtr, eventLen, handlerId) => {
-                    const element = this.getElement(handle);
+
+                js_attachEvent: (handle: number, eventPtr: number, eventLen: number, handlerId: number): void => {
+                    const element = this.getElement(handle) as HTMLElementWithListeners | null;
                     const eventName = this.readString(eventPtr, eventLen);
+
                     if (element) {
-                        const listener = (e) => {
+                        const listener = (e: Event): void => {
                             e.preventDefault();
                             const exportName = `_zigx_handler_${handlerId}`;
                             if (this.exports && this.exports[exportName]) {
-                                this.exports[exportName]();
+                                (this.exports[exportName] as () => void)();
                             }
                         };
+
                         element.addEventListener(eventName, listener);
+
                         if (!element._zigxListeners) {
                             element._zigxListeners = {};
                         }
                         element._zigxListeners[`${eventName}_${handlerId}`] = listener;
                     }
                 },
-                js_detachEvent: (handle, eventPtr, eventLen, handlerId) => {
-                    const element = this.getElement(handle);
+
+                js_detachEvent: (handle: number, eventPtr: number, eventLen: number, handlerId: number): void => {
+                    const element = this.getElement(handle) as HTMLElementWithListeners | null;
                     const eventName = this.readString(eventPtr, eventLen);
+
                     if (element && element._zigxListeners) {
                         const key = `${eventName}_${handlerId}`;
                         const listener = element._zigxListeners[key];
+
                         if (listener) {
                             element.removeEventListener(eventName, listener);
                             delete element._zigxListeners[key];
                         }
                     }
                 },
-                js_getRootHandle: () => {
+
+                js_getRootHandle: (): number => {
                     const root = document.querySelector(this.rootSelector);
                     if (!root) {
                         return this.getHandle(document.body);
                     }
                     return this.getHandle(root);
                 },
-                js_getFirstChild: (handle) => {
+
+                js_getFirstChild: (handle: number): number => {
                     const element = this.getElement(handle);
                     if (element && element.firstChild) {
                         return this.getHandle(element.firstChild);
                     }
                     return 0;
                 },
-                js_getNextSibling: (handle) => {
+
+                js_getNextSibling: (handle: number): number => {
                     const element = this.getElement(handle);
                     if (element && element.nextSibling) {
                         return this.getHandle(element.nextSibling);
                     }
                     return 0;
                 },
-                js_getTagName: (handle, bufPtr, bufLen) => {
-                    const element = this.getElement(handle);
+
+                js_getTagName: (handle: number, bufPtr: number, bufLen: number): number => {
+                    const element = this.getElement(handle) as HTMLElement | null;
                     if (element && element.tagName) {
                         const tagName = element.tagName.toLowerCase();
                         const bytes = new TextEncoder().encode(tagName);
                         const len = Math.min(bytes.length, bufLen);
-                        const view = new Uint8Array(this.memory.buffer, bufPtr, len);
+
+                        const view = new Uint8Array(this.memory!.buffer, bufPtr, len);
                         view.set(bytes.slice(0, len));
+
                         return len;
                     }
                     return 0;
                 },
-                js_setInnerHTML: (handle, htmlPtr, htmlLen) => {
-                    const element = this.getElement(handle);
+
+                js_setInnerHTML: (handle: number, htmlPtr: number, htmlLen: number): void => {
+                    const element = this.getElement(handle) as HTMLElement | null;
                     const html = this.readString(htmlPtr, htmlLen);
+
                     if (element) {
                         element.innerHTML = html;
                         this.bindEvents();
@@ -194,91 +267,109 @@ const ZigxRuntime = {
                 }
             }
         };
+
         try {
             const response = await fetch(wasmPath);
             if (!response.ok) {
                 throw new Error(`Failed to fetch WASM: ${response.status}`);
             }
+
             const { instance } = await WebAssembly.instantiateStreaming(response, imports);
-            this.memory = instance.exports.memory;
-            this.exports = instance.exports;
+            this.memory = instance.exports.memory as WebAssembly.Memory;
+            this.exports = instance.exports as unknown as ZigxExports;
+
             if (this.exports._zigx_init) {
                 this.exports._zigx_init();
             }
+
             this.bindEvents();
-        }
-        catch (error) {
+
+        } catch (error) {
             console.error('[Zigx] Failed to load WASM:', error);
         }
     },
-    bindEvents() {
+
+    bindEvents(): void {
         document.querySelectorAll('[data-zigx-onclick]').forEach(el => {
-            const fnName = el.dataset.zigxOnclick;
+            const fnName = (el as HTMLElement).dataset.zigxOnclick;
             const exportName = `_zigx_${fnName}`;
+
             if (this.exports && this.exports[exportName]) {
-                el.addEventListener('click', (e) => {
+                el.addEventListener('click', (e: Event) => {
                     e.preventDefault();
-                    this.exports[exportName]();
+                    (this.exports![exportName] as () => void)();
                 });
             }
         });
+
         document.querySelectorAll('[data-zigx-onchange]').forEach(el => {
-            const fnName = el.dataset.zigxOnchange;
+            const fnName = (el as HTMLElement).dataset.zigxOnchange;
             const exportName = `_zigx_${fnName}`;
+
             if (this.exports && this.exports[exportName]) {
                 el.addEventListener('change', () => {
-                    this.exports[exportName]();
+                    (this.exports![exportName] as () => void)();
                 });
             }
         });
+
         document.querySelectorAll('[data-zigx-onsubmit]').forEach(el => {
-            const fnName = el.dataset.zigxOnsubmit;
+            const fnName = (el as HTMLElement).dataset.zigxOnsubmit;
             const exportName = `_zigx_${fnName}`;
+
             if (this.exports && this.exports[exportName]) {
-                el.addEventListener('submit', (e) => {
+                el.addEventListener('submit', (e: Event) => {
                     e.preventDefault();
-                    this.exports[exportName]();
+                    (this.exports![exportName] as () => void)();
                 });
             }
         });
+
         document.querySelectorAll('[data-zigx-click]').forEach(el => {
-            const handlerId = parseInt(el.dataset.zigxClick, 10);
+            const handlerId = parseInt((el as HTMLElement).dataset.zigxClick!, 10);
             const exportName = `_zigx_handler_${handlerId}`;
+
             if (this.exports && this.exports[exportName]) {
-                el.addEventListener('click', (e) => {
+                el.addEventListener('click', (e: Event) => {
                     e.preventDefault();
-                    this.exports[exportName]();
+                    (this.exports![exportName] as () => void)();
                 });
             }
         });
+
         document.querySelectorAll('[data-zigx-change]').forEach(el => {
-            const handlerId = parseInt(el.dataset.zigxChange, 10);
+            const handlerId = parseInt((el as HTMLElement).dataset.zigxChange!, 10);
             const exportName = `_zigx_handler_${handlerId}`;
+
             if (this.exports && this.exports[exportName]) {
                 el.addEventListener('change', () => {
-                    this.exports[exportName]();
+                    (this.exports![exportName] as () => void)();
                 });
             }
         });
+
         document.querySelectorAll('[data-zigx-submit]').forEach(el => {
-            const handlerId = parseInt(el.dataset.zigxSubmit, 10);
+            const handlerId = parseInt((el as HTMLElement).dataset.zigxSubmit!, 10);
             const exportName = `_zigx_handler_${handlerId}`;
+
             if (this.exports && this.exports[exportName]) {
-                el.addEventListener('submit', (e) => {
+                el.addEventListener('submit', (e: Event) => {
                     e.preventDefault();
-                    this.exports[exportName]();
+                    (this.exports![exportName] as () => void)();
                 });
             }
         });
     },
-    readString(ptr, len) {
+
+    readString(ptr: number, len: number): string {
         if (!this.memory) {
             return '';
         }
         const bytes = new Uint8Array(this.memory.buffer, ptr, len);
         return new TextDecoder().decode(bytes);
     },
-    writeString(ptr, maxLen, str) {
+
+    writeString(ptr: number, maxLen: number, str: string): number {
         if (!this.memory) {
             return 0;
         }
@@ -288,29 +379,33 @@ const ZigxRuntime = {
         view.set(bytes.slice(0, len));
         return len;
     },
-    call(fnName, ...args) {
+
+    call(fnName: string, ...args: unknown[]): unknown {
         const exportName = `_zigx_${fnName}`;
         if (this.exports && this.exports[exportName]) {
-            return this.exports[exportName](...args);
+            return (this.exports[exportName] as (...args: unknown[]) => unknown)(...args);
         }
         console.warn(`[Zigx] Function not found: ${exportName}`);
     },
-    callHandler(handlerId, ...args) {
+
+    callHandler(handlerId: number, ...args: unknown[]): unknown {
         const exportName = `_zigx_handler_${handlerId}`;
         if (this.exports && this.exports[exportName]) {
-            return this.exports[exportName](...args);
+            return (this.exports[exportName] as (...args: unknown[]) => unknown)(...args);
         }
         console.warn(`[Zigx] Handler not found: ${exportName}`);
     }
 };
+
 document.addEventListener('DOMContentLoaded', () => {
-    const script = document.querySelector('script[data-zigx-wasm]');
+    const script = document.querySelector('script[data-zigx-wasm]') as HTMLScriptElement | null;
     if (script) {
-        const wasmPath = script.dataset.zigxWasm;
+        const wasmPath = script.dataset.zigxWasm!;
         const rootSelector = script.dataset.zigxRoot || '#zigx-root';
         ZigxRuntime.load(wasmPath, rootSelector);
     }
 });
+
 if (typeof window !== 'undefined') {
-    window.ZigxRuntime = ZigxRuntime;
+    (window as unknown as { ZigxRuntime: ZigxRuntimeType }).ZigxRuntime = ZigxRuntime;
 }

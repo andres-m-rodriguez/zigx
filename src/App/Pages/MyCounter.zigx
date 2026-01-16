@@ -1,6 +1,7 @@
 @route("/counter")
 <h1>Counter</h1>
 <p>Value: @counter</p>
+
 <button @onclick=increment>Increment</button>
 <button @onclick=decrement>Decrement</button>
 

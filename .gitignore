@@ -5,6 +5,9 @@ zig-cache/
 
 # Build artifacts
 src/gen/
+
+# Compiled TypeScript (generated from .ts files)
+src/Framework/Client/zigx-runtime.js
 *.o
 *.a
 *.so

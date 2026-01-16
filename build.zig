@@ -166,7 +166,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/gen/client/MyCounter.zig"),
             .target = wasm_target,
-            .optimize = .Debug,
+            .optimize = optimize,
             .imports = &.{
                 .{ .name = "runtime", .module = client_runtime_mod },
                 .{ .name = "render_tree", .module = render_tree_wasm_mod },
